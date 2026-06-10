@@ -1,0 +1,881 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>项目测试对齐与改进分析报告 - 2026-06-05</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f6f7f9;
+      --panel: #ffffff;
+      --panel-soft: #f9fafb;
+      --text: #151922;
+      --muted: #5c6574;
+      --line: #dfe3ea;
+      --accent: #0f766e;
+      --accent-soft: #e6f5f3;
+      --p0: #b42318;
+      --p0-soft: #fff0ed;
+      --p1: #b54708;
+      --p1-soft: #fff6e8;
+      --p2: #175cd3;
+      --p2-soft: #edf4ff;
+      --ok: #067647;
+      --warn: #b54708;
+      --bad: #b42318;
+      --shadow: 0 12px 34px rgba(21, 25, 34, 0.08);
+      --radius: 8px;
+      --mono: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+      --sans: Inter, "Segoe UI", "Microsoft YaHei", Arial, sans-serif;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html {
+      scroll-behavior: smooth;
+    }
+
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--sans);
+      font-size: 15px;
+      line-height: 1.65;
+    }
+
+    a {
+      color: var(--accent);
+      text-decoration: none;
+    }
+
+    a:hover {
+      text-decoration: underline;
+    }
+
+    .layout {
+      display: grid;
+      grid-template-columns: 280px minmax(0, 1fr);
+      min-height: 100vh;
+    }
+
+    aside {
+      position: sticky;
+      top: 0;
+      height: 100vh;
+      overflow: auto;
+      border-right: 1px solid var(--line);
+      background: #ffffff;
+      padding: 24px 20px;
+    }
+
+    .brand {
+      margin-bottom: 24px;
+    }
+
+    .brand-title {
+      margin: 0 0 8px;
+      font-size: 18px;
+      font-weight: 750;
+      line-height: 1.3;
+    }
+
+    .brand-meta {
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    nav {
+      display: grid;
+      gap: 3px;
+    }
+
+    nav a {
+      border-radius: 6px;
+      color: #313846;
+      display: block;
+      font-size: 14px;
+      padding: 7px 9px;
+    }
+
+    nav a:hover {
+      background: var(--panel-soft);
+      text-decoration: none;
+    }
+
+    main {
+      padding: 32px;
+      min-width: 0;
+    }
+
+    .hero {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      padding: 28px;
+      margin-bottom: 22px;
+    }
+
+    h1,
+    h2,
+    h3 {
+      letter-spacing: 0;
+      line-height: 1.3;
+    }
+
+    h1 {
+      margin: 0 0 10px;
+      font-size: 30px;
+    }
+
+    h2 {
+      font-size: 22px;
+      margin: 0 0 16px;
+    }
+
+    h3 {
+      font-size: 17px;
+      margin: 22px 0 10px;
+    }
+
+    p {
+      margin: 0 0 12px;
+    }
+
+    .lead {
+      color: var(--muted);
+      max-width: 1040px;
+      margin-bottom: 18px;
+    }
+
+    .meta-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 18px;
+    }
+
+    .pill {
+      align-items: center;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: #ffffff;
+      color: #344054;
+      display: inline-flex;
+      font-size: 13px;
+      gap: 6px;
+      padding: 5px 10px;
+      white-space: nowrap;
+    }
+
+    .pill.p0 {
+      background: var(--p0-soft);
+      border-color: #ffc9c1;
+      color: var(--p0);
+      font-weight: 700;
+    }
+
+    .pill.p1 {
+      background: var(--p1-soft);
+      border-color: #fedf89;
+      color: var(--p1);
+      font-weight: 700;
+    }
+
+    .pill.p2 {
+      background: var(--p2-soft);
+      border-color: #c7d7fe;
+      color: var(--p2);
+      font-weight: 700;
+    }
+
+    .section {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      margin: 22px 0;
+      padding: 24px;
+    }
+
+    .section.soft {
+      background: var(--panel-soft);
+    }
+
+    .grid {
+      display: grid;
+      gap: 14px;
+    }
+
+    .grid.two {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .grid.three {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+
+    .metric {
+      background: var(--panel-soft);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      padding: 16px;
+    }
+
+    .metric strong {
+      display: block;
+      font-size: 24px;
+      line-height: 1.2;
+      margin-bottom: 4px;
+    }
+
+    .metric span {
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .callout {
+      border-left: 4px solid var(--accent);
+      background: var(--accent-soft);
+      border-radius: 6px;
+      padding: 14px 16px;
+      margin: 16px 0;
+    }
+
+    .callout.p0 {
+      border-left-color: var(--p0);
+      background: var(--p0-soft);
+    }
+
+    .callout.p1 {
+      border-left-color: var(--p1);
+      background: var(--p1-soft);
+    }
+
+    .callout.p2 {
+      border-left-color: var(--p2);
+      background: var(--p2-soft);
+    }
+
+    .callout-title {
+      font-weight: 760;
+      margin-bottom: 5px;
+    }
+
+    ul,
+    ol {
+      margin: 8px 0 0 22px;
+      padding: 0;
+    }
+
+    li {
+      margin: 5px 0;
+    }
+
+    code {
+      background: #eef2f6;
+      border: 1px solid #dde3ec;
+      border-radius: 5px;
+      font-family: var(--mono);
+      font-size: 0.92em;
+      padding: 1px 5px;
+    }
+
+    .table-wrap {
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      overflow-x: auto;
+      background: #ffffff;
+      margin-top: 12px;
+    }
+
+    table {
+      border-collapse: collapse;
+      min-width: 760px;
+      width: 100%;
+    }
+
+    th,
+    td {
+      border-bottom: 1px solid var(--line);
+      padding: 10px 12px;
+      text-align: left;
+      vertical-align: top;
+    }
+
+    th {
+      background: #f2f5f8;
+      color: #2d3544;
+      font-size: 13px;
+      font-weight: 760;
+      white-space: nowrap;
+    }
+
+    tr:last-child td {
+      border-bottom: 0;
+    }
+
+    tbody tr:hover td {
+      background: #fbfcfe;
+    }
+
+    .priority {
+      border-radius: 999px;
+      display: inline-block;
+      font-size: 12px;
+      font-weight: 800;
+      line-height: 1;
+      padding: 5px 8px;
+      white-space: nowrap;
+    }
+
+    .priority.p0 {
+      background: var(--p0-soft);
+      color: var(--p0);
+    }
+
+    .priority.p1 {
+      background: var(--p1-soft);
+      color: var(--p1);
+    }
+
+    .priority.p2 {
+      background: var(--p2-soft);
+      color: var(--p2);
+    }
+
+    .risk-high {
+      color: var(--bad);
+      font-weight: 760;
+    }
+
+    .risk-mid {
+      color: var(--warn);
+      font-weight: 760;
+    }
+
+    .ok {
+      color: var(--ok);
+      font-weight: 760;
+    }
+
+    .phase {
+      align-items: flex-start;
+      display: grid;
+      grid-template-columns: 54px minmax(0, 1fr);
+      gap: 14px;
+      padding: 14px 0;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .phase:last-child {
+      border-bottom: 0;
+    }
+
+    .phase-index {
+      align-items: center;
+      background: var(--accent);
+      border-radius: 999px;
+      color: #ffffff;
+      display: flex;
+      font-weight: 800;
+      height: 38px;
+      justify-content: center;
+      width: 38px;
+    }
+
+    .phase-title {
+      font-weight: 760;
+      margin-bottom: 4px;
+    }
+
+    .small {
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    footer {
+      color: var(--muted);
+      font-size: 13px;
+      padding: 12px 0 32px;
+    }
+
+    @media (max-width: 980px) {
+      .layout {
+        grid-template-columns: 1fr;
+      }
+
+      aside {
+        position: static;
+        height: auto;
+        border-right: 0;
+        border-bottom: 1px solid var(--line);
+      }
+
+      nav {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      main {
+        padding: 20px;
+      }
+
+      .grid.two,
+      .grid.three {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    @media print {
+      body {
+        background: #ffffff;
+      }
+
+      .layout {
+        display: block;
+      }
+
+      aside {
+        display: none;
+      }
+
+      main {
+        padding: 0;
+      }
+
+      .section,
+      .hero {
+        box-shadow: none;
+        break-inside: avoid;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="layout">
+    <aside>
+      <div class="brand">
+        <p class="brand-title">测试对齐分析报告</p>
+        <div class="brand-meta">糖三角 / douyin-live-suite-clean<br />生成日期：2026-06-05</div>
+      </div>
+      <nav aria-label="报告目录">
+        <a href="#summary">结论摘要</a>
+        <a href="#basis">分析依据</a>
+        <a href="#understanding">需求理解</a>
+        <a href="#questions">开放问题</a>
+        <a href="#scope">测试范围</a>
+        <a href="#coverage">覆盖现状</a>
+        <a href="#matrices">测试矩阵</a>
+        <a href="#test-points">优先测试点</a>
+        <a href="#data-checks">数据校验</a>
+        <a href="#improvements">改进建议</a>
+        <a href="#roadmap">执行顺序</a>
+        <a href="#assessment">最终判断</a>
+      </nav>
+    </aside>
+
+    <main>
+      <section id="summary" class="hero">
+        <h1>项目测试对齐与改进分析报告</h1>
+        <p class="lead">
+          本 HTML 版基于同名 Markdown 报告整理，目标是让风险、测试缺口、优先级和执行路线更容易浏览。当前项目已有构建和回归基础，但发布前最需要补齐的是本地 API 安全边界、URL allowlist、依赖漏洞治理和统一测试门禁。
+        </p>
+        <div class="meta-row">
+          <span class="pill p0">P0：安全封口优先</span>
+          <span class="pill p1">P1：降低回归风险</span>
+          <span class="pill p2">P2：完善工程质量</span>
+          <span class="pill">构建已通过</span>
+          <span class="pill">23 个回归脚本已通过</span>
+          <span class="pill">npm audit：9 个漏洞</span>
+        </div>
+      </section>
+
+      <section class="section">
+        <h2>一眼看重点</h2>
+        <div class="grid three">
+          <div class="metric">
+            <strong class="risk-high">高</strong>
+            <span>API security、Dependency security、Real E2E、Maintainability 存在高风险缺口。</span>
+          </div>
+          <div class="metric">
+            <strong>18</strong>
+            <span>已整理的优先测试点，覆盖安全、采集、导出、性能、升级和配置异常。</span>
+          </div>
+          <div class="metric">
+            <strong>5</strong>
+            <span>建议执行阶段：安全封口、发布门禁、测试体系、可维护性、产品验收。</span>
+          </div>
+        </div>
+        <div class="callout p0">
+          <div class="callout-title">发布前阻断项</div>
+          <p>如果生产环境不允许非抖音 URL、非法 Origin 或无 token 请求进入状态变更接口，那么 API token、CORS allowlist、URL allowlist 和安全回归测试应直接列为 P0。</p>
+        </div>
+      </section>
+
+      <section id="basis" class="section">
+        <h2>分析依据</h2>
+        <ul>
+          <li><a href="project-prd-2026-06-05.md">docs/project-prd-2026-06-05.md</a></li>
+          <li><a href="project-tech-stack-2026-06-05.md">docs/project-tech-stack-2026-06-05.md</a></li>
+          <li><a href="project-code-audit-2026-06-05.md">docs/project-code-audit-2026-06-05.md</a></li>
+          <li><a href="project-test-report-2026-06-05.md">docs/project-test-report-2026-06-05.md</a></li>
+        </ul>
+      </section>
+
+      <section id="understanding" class="section">
+        <h2>Requirement Understanding</h2>
+        <div class="grid two">
+          <div>
+            <h3>业务目标</h3>
+            <p>糖三角是 Windows 桌面端抖音直播采集工具，目标是在用户登录抖音后采集直播间公开可见互动数据，并实时展示、持久化、导出和辅助识别重点用户。</p>
+            <h3>范围内</h3>
+            <p>Electron 桌面端、本地 Fastify 服务、Playwright 采集、SQLite 存储、React 监控台、REST API、SSE、Excel 导出、特别关注、神秘人识别、诊断日志、窗口状态保存、多主题。</p>
+            <h3>范围外</h3>
+            <p>云端服务、多人协作、抖音官方 API、移动端、远程部署、自动登录、权限外数据采集。</p>
+          </div>
+          <div>
+            <h3>关键角色</h3>
+            <p>直播运营、场控、私域/客户运营、数据复盘人员、技术支持。</p>
+            <h3>关键状态</h3>
+            <p>未登录、已登录、采集中、手动停止、主播关播自动停止、采集异常、导出中/导出失败、静态资源缓存异常、升级后首次启动。</p>
+            <h3>关键入口</h3>
+            <p>桌面启动、登录按钮、直播 URL 输入、开始采集、停止采集、导出 Excel、神秘人窗口、特别关注文件、SSE 事件流、诊断 API、安装包升级。</p>
+          </div>
+        </div>
+        <h3>异常与数据</h3>
+        <p>需要重点覆盖未登录开始采集、非抖音 URL、恶意跨源访问、本地 API 无 token、浏览器 profile 锁、采集页关闭、评论重复/丢失、静态资源 404、依赖漏洞、导出无会话、localStorage 不可用等异常。</p>
+        <p>关键数据包括 SQLite 会话和事件、评论诊断 counters/recent、Electron startup log、SSE flush counters、Excel 文件、<code>highlight_users.txt</code>、<code>npm audit</code> 结果、构建和回归脚本结果。</p>
+      </section>
+
+      <section id="questions" class="section">
+        <h2>Open Questions</h2>
+        <div class="grid two">
+          <div class="callout p0">
+            <div class="callout-title">Blocking</div>
+            <ul>
+              <li>生产环境是否允许非抖音 URL 进入登录窗口、采集窗口或用户搜索页？如果不允许，必须立即补 URL allowlist。</li>
+              <li>本地 API 是只服务 Electron 页面，还是允许浏览器开发模式访问？这决定 CORS/token 的严格程度。</li>
+              <li>依赖漏洞中的 high 项是否允许风险接受？如果不允许，安全审计必须成为发布阻断项。</li>
+            </ul>
+          </div>
+          <div class="callout">
+            <div class="callout-title">Non-blocking / Assumptions</div>
+            <ul>
+              <li>默认按桌面客户端单机使用场景分析，不按公网服务分析。</li>
+              <li>当前 50000 条/会话事件保留上限视为产品约束，但需要在 UI 或文档中显式说明。</li>
+              <li>真实抖音直播间端到端测试暂按人工/半自动验收处理。</li>
+              <li>ExcelJS 依赖链漏洞修复可能需要技术评估，短期可先记录风险接受依据。</li>
+            </ul>
+          </div>
+        </div>
+      </section>
+
+      <section id="scope" class="section">
+        <h2>Test Scope</h2>
+        <div class="grid three">
+          <div class="callout p0">
+            <div class="callout-title">Must test</div>
+            <p>启动、登录、开始采集、停止采集、事件持久化、SSE 实时展示、评论/礼物识别、特别关注、神秘人、导出、API 安全、URL allowlist、依赖审计、升级后白屏。</p>
+          </div>
+          <div class="callout p1">
+            <div class="callout-title">Regression</div>
+            <p>评论丢失、评论重复、礼物身份、礼物备注、静态资源缓存、localStorage 异常、安装包文件保留、浏览器上下文失效、自动保存。</p>
+          </div>
+          <div class="callout p2">
+            <div class="callout-title">Low value</div>
+            <p>移动端兼容、云端多租户、抖音官方 API 行为、跨平台安装包、复杂营销页面 UI。</p>
+          </div>
+        </div>
+      </section>
+
+      <section id="coverage" class="section">
+        <h2>Current Coverage Summary</h2>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Area</th>
+                <th>Current coverage</th>
+                <th>Gap</th>
+                <th>Risk</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr><td>Build</td><td>server/web/root build 通过</td><td>缺少 CI 固化</td><td class="risk-mid">中</td></tr>
+              <tr><td>Regression scripts</td><td>23 个脚本通过</td><td>无统一 test 入口</td><td class="risk-mid">中</td></tr>
+              <tr><td>API security</td><td>未覆盖</td><td>CORS/token/URL allowlist 缺失</td><td class="risk-high">高</td></tr>
+              <tr><td>Dependency security</td><td>npm audit 已执行</td><td>9 个漏洞未修复</td><td class="risk-high">高</td></tr>
+              <tr><td>Real E2E</td><td>未执行</td><td>无真实直播间稳定验收</td><td class="risk-high">高</td></tr>
+              <tr><td>Electron smoke</td><td>静态脚本覆盖部分</td><td>未验证打包后真实启动/升级</td><td class="risk-mid">中高</td></tr>
+              <tr><td>Frontend UI</td><td>字符串/纯逻辑回归为主</td><td>无组件测试/视觉回归</td><td class="risk-mid">中</td></tr>
+              <tr><td>Performance</td><td>有批量/虚拟列表设计</td><td>无高频压测指标</td><td class="risk-mid">中</td></tr>
+              <tr><td>Maintainability</td><td>审计已识别</td><td>大文件和 <code>@ts-nocheck</code> 未改</td><td class="risk-high">高</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section id="matrices" class="section">
+        <h2>Test Matrices</h2>
+
+        <h3>Role Matrix</h3>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Role</th>
+                <th>Can see</th>
+                <th>Can act</th>
+                <th>Notification</th>
+                <th>Notes</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr><td>直播运营</td><td>评论、进场、互动、礼物、统计、神秘人</td><td>登录、开始/停止采集、导出、打开用户主页</td><td>采集状态、关播自动停止、导出结果</td><td>P0 主路径用户</td></tr>
+              <tr><td>场控</td><td>实时评论、送礼、特别关注命中</td><td>暂停滚动、筛选、查看用户主页</td><td>特别关注弹窗、采集异常</td><td>强调低延迟和可读性</td></tr>
+              <tr><td>私域/客户运营</td><td>特别关注命中、备注/原昵称</td><td>维护 <code>highlight_users.txt</code>、打开主页</td><td>命中高亮、弹窗</td><td>需验证身份字段匹配，不误命中公共链接</td></tr>
+              <tr><td>数据复盘</td><td>历史会话、统计、Excel</td><td>停止后导出、查看最近会话</td><td>导出成功/失败日志</td><td>需验证停止后数据不清空</td></tr>
+              <tr><td>技术支持</td><td>startup log、comment diagnostics、资源请求状态</td><td>重置诊断、收集日志</td><td>白屏/丢评论诊断信息</td><td>诊断接口也需要访问保护</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h3>State Transition Matrix</h3>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>From</th>
+                <th>Trigger</th>
+                <th>To</th>
+                <th>Side effects</th>
+                <th>Priority</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr><td>桌面未启动</td><td>打开应用</td><td>服务启动/前端加载</td><td>生成 startup log，加载静态资源</td><td><span class="priority p0">P0</span></td></tr>
+              <tr><td>未登录</td><td>点击登录</td><td>登录窗口打开</td><td>创建/复用 Chromium profile</td><td><span class="priority p0">P0</span></td></tr>
+              <tr><td>未登录</td><td>开始采集</td><td>仍未采集</td><td>UI/API 返回明确错误</td><td><span class="priority p0">P0</span></td></tr>
+              <tr><td>已登录</td><td>开始采集合法抖音直播 URL</td><td>采集中</td><td>创建 session，注入采集器，写 SQLite，SSE 推送</td><td><span class="priority p0">P0</span></td></tr>
+              <tr><td>已登录</td><td>开始采集非抖音 URL</td><td>拒绝</td><td>不打开 Playwright 目标页，记录拒绝原因</td><td><span class="priority p0">P0</span></td></tr>
+              <tr><td>采集中</td><td>停止采集</td><td>stopped</td><td>等待持久化队列，保留数据，手动保存</td><td><span class="priority p0">P0</span></td></tr>
+              <tr><td>采集中</td><td>主播关播</td><td>stopped</td><td>自动保存到文档目录</td><td><span class="priority p1">P1</span></td></tr>
+              <tr><td>采集中</td><td>采集页关闭/崩溃</td><td>error</td><td>记录日志，结束会话</td><td><span class="priority p1">P1</span></td></tr>
+              <tr><td>stopped</td><td>导出</td><td>stopped</td><td>返回 Excel，包含全量会话事件</td><td><span class="priority p0">P0</span></td></tr>
+              <tr><td>升级后首次启动</td><td>加载主页面</td><td>前端正常渲染</td><td>清 Electron HTTP cache，加 cache buster</td><td><span class="priority p1">P1</span></td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h3>Platform / Entry Matrix</h3>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Platform/Entry</th>
+                <th>Expected behavior</th>
+                <th>Priority</th>
+                <th>Verification</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr><td>Electron 主窗口</td><td>主窗口不白屏，服务 URL 加 cache buster</td><td><span class="priority p0">P0</span></td><td>UI、log、manual observation</td></tr>
+              <tr><td>Fastify REST API</td><td>参数校验、鉴权、错误码清晰</td><td><span class="priority p0">P0</span></td><td>API</td></tr>
+              <tr><td>SSE <code>/api/events/stream</code></td><td>批量推送、心跳、断开清理</td><td><span class="priority p0">P0</span></td><td>API、log</td></tr>
+              <tr><td>Playwright Chromium</td><td>仅访问允许的抖音 URL，采集器稳定注入</td><td><span class="priority p0">P0</span></td><td>UI、log、backend console</td></tr>
+              <tr><td>SQLite</td><td>会话/事件/身份缓存正确写入，索引有效</td><td><span class="priority p0">P0</span></td><td>database</td></tr>
+              <tr><td>Excel 导出</td><td>停止后可导出全量历史事件</td><td><span class="priority p0">P0</span></td><td>manual observation、database</td></tr>
+              <tr><td><code>highlight_users.txt</code></td><td>自动读取、中文备注不乱码、通配符可控</td><td><span class="priority p1">P1</span></td><td>UI、database</td></tr>
+              <tr><td>安装包升级</td><td>不加载旧 hash 资源，不白屏</td><td><span class="priority p1">P1</span></td><td>log、cache/index</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h3>Exception Matrix</h3>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Failure type</th>
+                <th>Expected user feedback</th>
+                <th>System side effect</th>
+                <th>Priority</th>
+                <th>Verification</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr><td>缺少 API token</td><td>请求被拒绝</td><td>不改变会话/浏览器状态</td><td><span class="priority p0">P0</span></td><td>API</td></tr>
+              <tr><td>非法 Origin</td><td>请求被拒绝或不返回敏感响应</td><td>无状态变化</td><td><span class="priority p0">P0</span></td><td>API</td></tr>
+              <tr><td>非抖音 URL</td><td>明确错误</td><td>不导航 Playwright</td><td><span class="priority p0">P0</span></td><td>API、log</td></tr>
+              <tr><td>未登录开始采集</td><td>提示先登录</td><td>不创建 session</td><td><span class="priority p0">P0</span></td><td>UI、database</td></tr>
+              <tr><td>Chromium 缺失/安装失败</td><td>显示安装/错误状态</td><td>记录 install state</td><td><span class="priority p1">P1</span></td><td>UI、log</td></tr>
+              <tr><td>采集页关闭</td><td>显示错误/停止</td><td>session 标记 error</td><td><span class="priority p1">P1</span></td><td>log、database</td></tr>
+              <tr><td>导出无会话</td><td>返回错误</td><td>不创建空文件</td><td><span class="priority p1">P1</span></td><td>API</td></tr>
+              <tr><td>localStorage 不可用</td><td>UI 仍渲染</td><td>偏好不持久化</td><td><span class="priority p2">P2</span></td><td>UI</td></tr>
+              <tr><td>静态资源缺失</td><td>资源 404，不回退 index.html</td><td>startup log 可定位</td><td><span class="priority p1">P1</span></td><td>cache/index、log</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section id="test-points" class="section">
+        <h2>Prioritized Test Points</h2>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>Priority</th>
+                <th>Scenario</th>
+                <th>Expected result</th>
+                <th>Verification</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr><td>TA-001</td><td><span class="priority p0">P0</span></td><td>无 token 调用开始/停止/登录/打开主页 API</td><td>请求被拒绝，浏览器和 session 状态不变</td><td>API、database</td></tr>
+              <tr><td>TA-002</td><td><span class="priority p0">P0</span></td><td>非允许 Origin 调用本地 API</td><td>CORS 不允许读取敏感响应，状态不变</td><td>API</td></tr>
+              <tr><td>TA-003</td><td><span class="priority p0">P0</span></td><td>输入非抖音 URL 开始采集</td><td>API 返回拒绝，不启动 Playwright 导航</td><td>API、log</td></tr>
+              <tr><td>TA-004</td><td><span class="priority p0">P0</span></td><td>未登录点击开始采集</td><td>显示明确错误，不创建 running session</td><td>UI、database</td></tr>
+              <tr><td>TA-005</td><td><span class="priority p0">P0</span></td><td>已登录输入合法直播 URL 开始采集</td><td>创建 running session，事件进入 SQLite，SSE 推送到 UI</td><td>UI、API、database、log</td></tr>
+              <tr><td>TA-006</td><td><span class="priority p0">P0</span></td><td>高频评论进入采集链路</td><td>不丢、不重复，诊断 counters 可解释</td><td>database、log</td></tr>
+              <tr><td>TA-007</td><td><span class="priority p0">P0</span></td><td>停止采集后导出</td><td>数据保留，Excel 包含评论/进场/互动/礼物/统计</td><td>UI、database、manual observation</td></tr>
+              <tr><td>TA-008</td><td><span class="priority p0">P0</span></td><td>npm audit 发布前执行</td><td>high 漏洞为 0 或有风险接受记录</td><td>backend console</td></tr>
+              <tr><td>TA-009</td><td><span class="priority p1">P1</span></td><td>主播关播自动停止</td><td>session stopped，自动导出到文档目录，日志记录成功/失败</td><td>log、database、manual observation</td></tr>
+              <tr><td>TA-010</td><td><span class="priority p1">P1</span></td><td>特别关注用户命中评论和送礼</td><td>UI 高亮并显示 <code>备注 / 原昵称</code>，不误用备注打开主页</td><td>UI、database</td></tr>
+              <tr><td>TA-011</td><td><span class="priority p1">P1</span></td><td><code>*dou*</code> 通配符遇到 <code>douyin.com</code> 链接</td><td>不误命中普通用户</td><td>UI、database</td></tr>
+              <tr><td>TA-012</td><td><span class="priority p1">P1</span></td><td>神秘人本人进场/评论/送礼</td><td>神秘人列表出现，最近活动可展开</td><td>UI、database</td></tr>
+              <tr><td>TA-013</td><td><span class="priority p1">P1</span></td><td>普通用户 @ 神秘人</td><td>普通用户不进入神秘人列表</td><td>UI、database</td></tr>
+              <tr><td>TA-014</td><td><span class="priority p1">P1</span></td><td>升级安装后首次启动</td><td>不白屏，资源请求状态和 React root 诊断正常</td><td>log、cache/index</td></tr>
+              <tr><td>TA-015</td><td><span class="priority p1">P1</span></td><td>采集页关闭或浏览器上下文失效</td><td>session 标记 error，UI/日志可定位</td><td>log、database</td></tr>
+              <tr><td>TA-016</td><td><span class="priority p1">P1</span></td><td><code>collector.ts</code> payload 边界异常</td><td>schema 拒绝异常 payload，不影响正常批次</td><td>API、log</td></tr>
+              <tr><td>TA-017</td><td><span class="priority p2">P2</span></td><td>主题、字号、窗口状态恢复</td><td>重启后恢复；localStorage 不可用时 UI 不崩</td><td>UI、manual observation</td></tr>
+              <tr><td>TA-018</td><td><span class="priority p2">P2</span></td><td>端口/路径环境变量异常</td><td>启动失败信息明确，不产生 NaN port 或隐式异常</td><td>log、backend console</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section id="data-checks" class="section">
+        <h2>Tracking / Data Checks</h2>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Trigger</th>
+                <th>Event/log/data</th>
+                <th>Required fields/state</th>
+                <th>Verification</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr><td>开始采集</td><td><code>sessions</code> row</td><td><code>status=running</code>、url、started_at、room_id</td><td>database</td></tr>
+              <tr><td>采集事件</td><td><code>events</code> row</td><td>unique_key、session_id、category、message、payload_json</td><td>database</td></tr>
+              <tr><td>评论链路</td><td>commentDiagnostics</td><td>raw_received、row_built、db.inserted、sse.flush</td><td>log/API</td></tr>
+              <tr><td>SSE 推送</td><td>SSE message</td><td><code>type=events</code>，payload 分类正确</td><td>API</td></tr>
+              <tr><td>停止采集</td><td><code>sessions</code> update</td><td><code>status=stopped</code>、ended_at</td><td>database</td></tr>
+              <tr><td>自动保存</td><td>session log</td><td>Excel 自动保存成功/失败和 outputPath</td><td>log</td></tr>
+              <tr><td>导出</td><td>Excel workbook</td><td>sheet 覆盖事件分类和统计</td><td>manual observation</td></tr>
+              <tr><td>白屏诊断</td><td>desktop-startup.log</td><td>releaseTag、serverUrl、resource status、rootChildCount</td><td>log</td></tr>
+              <tr><td>安全拒绝</td><td>API log/error</td><td>rejected reason、无状态变化</td><td>API、log</td></tr>
+              <tr><td>依赖审计</td><td>npm audit</td><td>high=0 或风险接受记录</td><td>backend console</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section id="improvements" class="section">
+        <h2>改进建议</h2>
+        <div class="grid three">
+          <div class="callout p0">
+            <div class="callout-title">P0：发布前必须优先改</div>
+            <ol>
+              <li>补本地 API 安全边界：实现 API secret、CORS allowlist，并保护状态变更、诊断、导出、事件读取接口。</li>
+              <li>补 URL allowlist：开始采集、登录窗口、打开主页、搜索页都必须限制到明确允许的抖音 HTTPS 域名和路径。</li>
+              <li>修复依赖审计 high 项：优先升级 Electron；评估 <code>@fastify/static</code>、<code>fast-uri</code>、<code>tmp</code>、<code>@xmldom/xmldom</code>、ExcelJS 依赖链。</li>
+              <li>建立统一测试入口：增加根 <code>test:regression</code> 和 <code>audit:security</code>，避免手工漏跑 23 个脚本。</li>
+              <li>增加 API 安全回归：至少覆盖无 token、错误 token、非法 Origin、非抖音 URL、诊断/导出未授权访问。</li>
+            </ol>
+          </div>
+          <div class="callout p1">
+            <div class="callout-title">P1：降低回归和维护风险</div>
+            <ol>
+              <li>拆分大文件：优先拆 <code>collector.ts</code>、<code>capture-service.ts</code>、<code>App.tsx</code>。</li>
+              <li>移除 <code>collector.ts</code> 的 <code>@ts-nocheck</code>：先为页面回传 payload 增加 schema，再逐步恢复 TypeScript 检查。</li>
+              <li>引入 Vitest：覆盖纯函数、URL allowlist、事件分类、去重、特别关注匹配、Excel 文件名安全。</li>
+              <li>增加 Electron smoke：验证打包后 app.asar 内容、server 启动、主页面 DOM mount、升级缓存清理。</li>
+              <li>增加高频性能压测：模拟大量 comment/gift 批次，验证 UI 队列、SSE、SQLite 和内存上限。</li>
+            </ol>
+          </div>
+          <div class="callout p2">
+            <div class="callout-title">P2：完善工程质量</div>
+            <ol>
+              <li>统一版本源：根包、server、web、desktop、Electron release tag、README 和安装包名保持一致。</li>
+              <li>增加配置 schema：校验 HOST、PORT、存储路径、浏览器路径，避免启动期隐式异常。</li>
+              <li>明确 50000 条事件保留策略：UI/文档说明，并评估是否允许用户配置。</li>
+              <li>增加覆盖率和 CI：构建、回归、audit、打包 smoke 形成发布门禁。</li>
+              <li>增加人工验收清单：真实直播间登录、采集、送礼、神秘人、特别关注、导出、升级安装。</li>
+            </ol>
+          </div>
+        </div>
+      </section>
+
+      <section id="roadmap" class="section">
+        <h2>Recommended Execution Order</h2>
+        <div class="phase">
+          <div class="phase-index">1</div>
+          <div>
+            <div class="phase-title">安全封口</div>
+            <p>API token、CORS、URL allowlist、安全测试。</p>
+            <p class="small">退出标准：P0 安全测试通过，非抖音 URL 被拒绝。</p>
+          </div>
+        </div>
+        <div class="phase">
+          <div class="phase-index">2</div>
+          <div>
+            <div class="phase-title">发布门禁</div>
+            <p>Electron/依赖升级、npm audit、统一 test 脚本。</p>
+            <p class="small">退出标准：audit high=0 或有批准记录，回归一键通过。</p>
+          </div>
+        </div>
+        <div class="phase">
+          <div class="phase-index">3</div>
+          <div>
+            <div class="phase-title">测试体系</div>
+            <p>Vitest、API 安全测试、Electron smoke、高频压测。</p>
+            <p class="small">退出标准：CI 可稳定跑 build/test/audit。</p>
+          </div>
+        </div>
+        <div class="phase">
+          <div class="phase-index">4</div>
+          <div>
+            <div class="phase-title">可维护性</div>
+            <p>拆分大文件、移除 <code>@ts-nocheck</code>、模块化采集逻辑。</p>
+            <p class="small">退出标准：核心文件可类型检查，回归通过。</p>
+          </div>
+        </div>
+        <div class="phase">
+          <div class="phase-index">5</div>
+          <div>
+            <div class="phase-title">产品验收</div>
+            <p>真实直播间人工/半自动验收、发布文档更新。</p>
+            <p class="small">退出标准：关键用户流和导出链路验收通过。</p>
+          </div>
+        </div>
+      </section>
+
+      <section id="assessment" class="section">
+        <h2>Final Assessment</h2>
+        <p>当前项目的功能链路和历史回归能力已经有基础，构建与 23 个回归脚本通过，说明内部核心逻辑不是失控状态。但从需求对齐角度看，最明显的缺口不是“还缺一个脚本”，而是 P0 安全边界和发布门禁没有建立：本地 API、URL allowlist、依赖漏洞、统一测试入口都直接影响能否安全发布。</p>
+        <p>建议先完成安全封口和测试入口统一，再做大规模拆分。否则拆分会扩大回归面，而安全问题仍然存在。</p>
+      </section>
+
+      <footer>
+        来源 Markdown：<a href="project-test-alignment-analysis-2026-06-05.md">project-test-alignment-analysis-2026-06-05.md</a>。本页为纯静态 HTML，无外部脚本依赖。
+      </footer>
+    </main>
+  </div>
+</body>
+</html>

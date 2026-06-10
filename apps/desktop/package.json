@@ -1,0 +1,83 @@
+{
+  "name": "@douyin-live-suite/desktop",
+  "version": "26.6.10-2",
+  "private": true,
+  "description": "糖三角桌面客户端",
+  "author": "OpenAI Codex",
+  "type": "module",
+  "main": "main.mjs",
+  "scripts": {
+    "dev": "electron .",
+    "prepare-runtime": "node scripts/prepare-runtime.cjs",
+    "prepare-runtime:force": "node scripts/prepare-runtime.cjs --force",
+    "pack": "npm run pack:fast",
+    "pack:fast": "node scripts/prepare-native.cjs && npm run prepare-runtime && electron-builder --win nsis && node scripts/regression-packaged-native-abi.cjs --required && node scripts/finalize-installer.cjs && node scripts/prepare-node-native.cjs --force",
+    "pack:full": "node scripts/prepare-native.cjs --force && npm run prepare-runtime:force && electron-builder --win nsis && node scripts/regression-packaged-native-abi.cjs --required && node scripts/finalize-installer.cjs && node scripts/prepare-node-native.cjs --force"
+  },
+  "dependencies": {
+    "@fastify/cors": "^11.1.0",
+    "@fastify/static": "^9.1.3",
+    "better-sqlite3": "^12.10.0",
+    "exceljs": "^4.4.0",
+    "fastify": "^5.2.1",
+    "nanoid": "^5.1.5",
+    "playwright": "^1.53.1",
+    "zod": "^3.24.4"
+  },
+  "devDependencies": {
+    "electron": "^40.10.2",
+    "electron-builder": "26.8.1"
+  },
+  "build": {
+    "appId": "com.local.douyin-live-suite",
+    "productName": "糖三角",
+    "artifactName": "糖三角.${ext}",
+    "compression": "normal",
+    "afterPack": "scripts/after-pack.cjs",
+    "npmRebuild": false,
+    "electronLanguages": [
+      "zh-CN",
+      "en-US"
+    ],
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "main.mjs",
+      "preload.cjs",
+      "package.json",
+      "assets/**/*",
+      ".bundle/**/*",
+      "!**/*.map",
+      "!**/*.d.ts",
+      "!**/test/**",
+      "!**/tests/**",
+      "!**/__tests__/**",
+      "!**/benchmark/**",
+      "!**/benchmarks/**",
+      "!**/example/**",
+      "!**/examples/**",
+      "!**/*.md",
+      "!**/README*",
+      "!**/CHANGELOG*"
+    ],
+    "asar": true,
+    "win": {
+      "icon": "assets/app.ico",
+      "signAndEditExecutable": false,
+      "verifyUpdateCodeSignature": false,
+      "target": [
+        "nsis"
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "perMachine": false,
+      "installerLanguages": "zh_CN",
+      "include": "build/installer.nsh",
+      "differentialPackage": false
+    },
+    "publish": null
+  }
+}

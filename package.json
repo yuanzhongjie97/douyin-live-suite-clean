@@ -1,0 +1,33 @@
+{
+  "name": "douyin-live-suite",
+  "version": "26.6.10-2",
+  "private": true,
+  "workspaces": [
+    "apps/server",
+    "apps/web",
+    "apps/desktop"
+  ],
+  "scripts": {
+    "dev": "node -e \"const {spawn}=require('node:child_process'); const cmds=[['npm',['run','dev:server']],['npm',['run','dev:web']]]; const ps=cmds.map(([cmd,args])=>spawn(cmd,args,{stdio:'inherit',shell:true})); const stop=()=>ps.forEach(p=>p.kill()); process.on('SIGINT',()=>{stop(); process.exit(130)}); process.on('SIGTERM',()=>{stop(); process.exit(143)}); ps.forEach(p=>p.on('exit',code=>{if(code){stop(); process.exit(code)}}));\"",
+    "dev:server": "npm --workspace apps/server run dev",
+    "dev:web": "npm --workspace apps/web run dev",
+    "desktop:prepare-native": "node apps/desktop/scripts/prepare-native.cjs",
+    "desktop:prepare-native:force": "node apps/desktop/scripts/prepare-native.cjs --force",
+    "desktop:dev": "npm run build:server && npm run build:web && npm run desktop:prepare-native && npm --workspace apps/desktop run dev",
+    "desktop:pack": "npm run desktop:pack:fast",
+    "desktop:pack:fast": "npm run build:server && npm run build:web && npm --workspace apps/desktop run pack:fast",
+    "desktop:pack:full": "npm run build:server && npm run build:web && npm run desktop:prepare-native && npm --workspace apps/desktop run pack:full",
+    "build": "npm run build:server && npm run build:web",
+    "build:server": "npm --workspace apps/server run build",
+    "build:web": "npm --workspace apps/web run build",
+    "install:playwright": "npm --workspace apps/server run install:playwright",
+    "test": "npm run test:regression",
+    "test:build": "npm run build:server && npm run build:web",
+    "test:server": "node apps/server/scripts/run-regressions.mjs",
+    "test:web": "node apps/web/scripts/run-regressions.mjs",
+    "test:desktop": "node apps/desktop/scripts/run-regressions.cjs",
+    "test:regression": "node apps/desktop/scripts/prepare-node-native.cjs && npm run test:build && npm --workspace apps/desktop run prepare-runtime && npm run test:server && npm run test:web && npm run test:desktop",
+    "audit:security": "npm audit --audit-level=high"
+  },
+  "devDependencies": {}
+}
