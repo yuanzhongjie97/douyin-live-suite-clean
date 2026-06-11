@@ -868,3 +868,23 @@ Release artifact:
 | Installer | `C:\Users\85855\PycharmProjects\PythonProject\douyin-live-suite-clean\apps\desktop\release\糖三角-V26.6.12.1-安装包.exe` |
 | Size | `85,329,128` bytes |
 | SHA256 | `3AE6D269F9A90BEB52585649C131C7E47A9D822A7D16D294555FDFCA3B71CEEB` |
+
+Additional long smoke:
+
+| Item | Value |
+| --- | --- |
+| Room | `https://live.douyin.com/127874409138` |
+| Duration | 600 seconds |
+| Raw events | 600 |
+| Raw comments | 205 |
+| Raw entries / interactions / gifts | 376 / 19 / 0 |
+| Persisted events | 302 |
+| Persisted comments | 51 |
+| Persisted entries / interactions / gifts | 241 / 10 / 0 |
+| Comment ledger | raw 205, deduped 154, DB inserted 51, bus published 51 |
+| Node visible comment observer | uniqueComments 40, `unmatchedCount=0` |
+| In-page comment probe | uniqueComments 40, `unmatchedCount=0` |
+| Node visible message probe | uniqueMessages 288, `unmatchedCount=0` |
+| In-page message probe | uniqueMessages 290, `unmatchedCount=0` |
+| Unmatched visible messages | `[]` |
+| SourceId suspicious groups | `[]` |

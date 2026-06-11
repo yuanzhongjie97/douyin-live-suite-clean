@@ -844,6 +844,7 @@ Release note:
 | `npm run test:regression` | PASS: server 32, web 16, desktop 6 |
 | `npm run audit:security` | PASS: high=0; existing `exceljs -> uuid` moderate remains |
 | 300s real-room smoke | PASS: raw events 268, raw comments 90, persisted comments 18, entries 126, all visible/page comment and message unmatched counts are 0 |
+| 600s real-room smoke | PASS: raw events 600, raw comments 205, persisted comments 51, entries 241, interactions 10, all visible/page comment and message unmatched counts are 0, `unmatchedVisibleMessages=[]`, `suspiciousRawCommentGroups=[]` |
 
 ### Remaining Risks
 

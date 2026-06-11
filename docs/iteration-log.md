@@ -374,5 +374,6 @@
 - 原因：5 分钟真实 smoke 发现结束边界附近出现 `来了` 可见行未匹配；代码排查确认旧 cleanup 会取消 flushTimer 并直接 `pending.length = 0`，存在停止瞬间丢最后一批事件的生产风险。
 - 验证：新增 `regression-collector-stop-drains-pending.mjs`，修复前失败为 `events=[]`，修复后通过；`npm run test:server` 通过 32 scripts；`npm run test:regression` 通过 server 32、web 16、desktop 6；`npm run audit:security` high=0，仅保留 `exceljs -> uuid` moderate。
 - 真实 smoke：`https://live.douyin.com/127874409138` 5 分钟复测通过，raw total 268、raw comments 90、persisted total 144、persisted comments 18、entries 126；`visibleCommentObserver.unmatchedCount=0`、`pageProbe.unmatchedCount=0`、`visibleMessageProbe.unmatchedCount=0`、`pageMessageProbe.unmatchedCount=0`、`unmatchedVisibleMessages=[]`、`suspiciousRawCommentGroups=[]`。
+- 追加验证：`V26.6.12.1` 代码路径对 `https://live.douyin.com/127874409138` 做 10 分钟真实 smoke，raw total 600、raw comments 205、persisted total 302、persisted comments 51、entries 241、interactions 10；四类可见探针 `unmatchedCount=0`，`unmatchedVisibleMessages=[]`，`suspiciousRawCommentGroups=[]`。
 - 打包：版本升为 `V26.6.12.1` / `26.6.12-1`；`npm run desktop:pack:fast` 通过并执行 packaged native ABI 门禁；安装包 `C:\Users\85855\PycharmProjects\PythonProject\douyin-live-suite-clean\apps\desktop\release\糖三角-V26.6.12.1-安装包.exe`，大小 `85,329,128` bytes，SHA256 `3AE6D269F9A90BEB52585649C131C7E47A9D822A7D16D294555FDFCA3B71CEEB`。
 - 边界：不改变采集入口、SQLite 表结构、统计/导出口径、每会话原始明细 50000 条上限、UI 近期窗口和特别关注展示口径；安装后最终人工验收仍由用户拍板。
