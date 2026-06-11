@@ -339,3 +339,14 @@
 - 新增前端门禁 `apps/web/scripts/regression-gift-identity-update-remark-mock.mjs`：验证同一 `uniqueKey` 礼物身份后到时前端替换原行、不追加重复行、保留原始 `createdAt/ingestSeq`，并重新命中特别关注备注。
 - 本次补强只增加 mock 测试与文档，不改业务功能、不改展示口径、不改 50000 条原始明细保留上限、不重新打包。
 - 验证结果：`npm run test:regression` 通过，server 23、web 12、desktop 6；`npm run audit:security` 通过 high 门禁，仍保留既有 `exceljs -> uuid` 2 个 moderate。
+
+## 17. 2026-06-11 V26.6.11.2 消息链路边界补充
+
+- 新增边界：采集页向 Node 发送 batch 失败时，不得直接丢弃 pending 消息；必须重试，除非超过当前每会话 50000 条保留边界。
+- 新增边界：无稳定 `sourceId` 的评论必须携带 `collectorClientId`，用于同一次采集 payload 重试幂等；不同真实评论仍使用不同 `collectorClientId` 区分，避免把连续相同评论误删。
+- 新增边界：抖音直播页复用 DOM 行并只更新文本节点时，采集器必须能通过 `characterData` 监听或高频兜底扫描再次进入解析链路。
+- 新增边界：服务端 SSE 不得在写给客户端之前按固定 400 条窗口裁剪事件；慢客户端背压只记录诊断，不作为静默丢事件理由。
+- 新增边界：前端评论实时入队不得低于当前每会话 50000 条保留边界；UI 展示窗口仍保持评论 200 条，不新增全量 UI。
+- 新增边界：开发预览的 Vite proxy 必须跟随后端 `PORT`，避免 `3100` 被其他本地项目占用时误连错误后端。
+- `V26.6.11.2` 已对 `https://live.douyin.com/127874409138` 做 90 秒真实 smoke：raw comments 3、persisted comments 1、deduped 2，三条 raw 评论为同一 `sourceId` 的 DOM 重扫，DB/SSE/ledger 一致。
+- 本次不改变直播 URL allowlist、采集启动/停止流程、SQLite 表结构、统计/导出口径、每会话 50000 条原始明细上限、UI 近期窗口和特别关注展示口径。

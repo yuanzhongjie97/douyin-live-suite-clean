@@ -488,3 +488,63 @@ Conclusion:
 - Comment duplicate prevention and real repeated-comment preservation now have one end-to-end mock gate through DB, export source, ledger, and SSE.
 - Gift remark recovery now has both backend and frontend mock gates: backend updates/publishes the identity-late row; frontend replaces the existing row and recomputes the remark.
 - Real-room testing remains a smoke/DOM-change discovery step. If the issue recurs, collect session ID, timestamp, screenshot, visible live-room text, gift row, highlight config line, and copied diagnostics.
+
+## 20. V26.6.11.2 Real-Room Message Loss Fix Retest
+
+Purpose:
+- Fix the remaining real-room message loss risk without changing business display boundaries.
+- Validate the real Douyin room provided by the user: `https://live.douyin.com/127874409138`.
+
+Changed coverage:
+- Added `apps/server/scripts/regression-collector-loss-resilience.mjs`.
+- Added `apps/web/scripts/regression-stream-queue-no-comment-loss.mjs`.
+- Added `apps/web/scripts/regression-vite-proxy-port.mjs`.
+- Added real-room smoke helper `apps/server/scripts/smoke-real-room-message-integrity.mjs`.
+
+Fix summary:
+- Collector batch send failures now requeue the unsent batch instead of discarding it.
+- No-source comments now carry `collectorClientId` so retry sends remain idempotent while true repeated comments remain distinguishable.
+- Chat DOM text-node mutation is observed, and high-frequency fallback scan now checks the latest 80 rows every 250ms.
+- Server SSE no longer trims pending events before writing to the client.
+- Frontend comment stream queue keeps the current 50,000 event boundary before display-window trimming; UI still displays recent 200 comments.
+- Vite dev proxy follows `PORT`, avoiding accidental proxying to another local project on 3100.
+
+Command results:
+
+| Command | Result |
+| --- | --- |
+| `node --import tsx apps/server/scripts/regression-collector-loss-resilience.mjs` | PASS |
+| `node apps/web/scripts/regression-stream-queue-no-comment-loss.mjs` | PASS |
+| `node apps/web/scripts/regression-vite-proxy-port.mjs` | PASS |
+| `npm run test:regression` | PASS: server 24, web 14, desktop 6 |
+| `npm run audit:security` | PASS: high=0; remaining `exceljs -> uuid` 2 moderate |
+| `node apps/server/scripts/smoke-real-room-message-integrity.mjs https://live.douyin.com/127874409138` | PASS: 90s real-room smoke |
+| `npm run desktop:pack:fast` | PASS; packaged native ABI gate passed |
+
+Real-room smoke result:
+
+| Item | Value |
+| --- | --- |
+| Room | `https://live.douyin.com/127874409138` |
+| Duration | 90 seconds |
+| Room title | `婷哥kiki🎙️ ⁸⁰²³的抖音直播间` |
+| Raw events | 58 |
+| Raw comments | 3 |
+| Persisted events | 56 |
+| Persisted comments | 1 |
+| Entries / interactions / gifts | 53 / 2 / 0 |
+| Comment ledger | raw 3, deduped 2, DB inserted 1, bus published 1 |
+| Interpretation | The three raw comments had the same `sourceId=7650137793749947402` and same content, so two were DOM rescans and were correctly deduped. No evidence of distinct real comments being dropped in this smoke. |
+
+Release artifact:
+
+| Item | Value |
+| --- | --- |
+| Version | `V26.6.11.2` / `26.6.11-2` |
+| Installer | `C:\Users\85855\PycharmProjects\PythonProject\douyin-live-suite-clean\apps\desktop\release\糖三角-V26.6.11.2-安装包.exe` |
+| Size | `85,327,499` bytes |
+| SHA256 | `1369BD4C4A56C7E12B001C9CEDC94C5BFD9ACF26CC8615B7158C34F39E06B2A4` |
+
+Conclusion:
+- Known P0 message-loss risks in collector retry, DOM text reuse, SSE pending trim, frontend queue trim, and dev proxy port mismatch are mitigated.
+- Installation/manual acceptance still remains with the user.

@@ -105,3 +105,14 @@
 | payload-only 稳定身份 | `regression-capture-integrity-strong-mock.mjs`、`regression-highlight-payload-identity.mjs` | 评论仅有 `payload.userLink`、礼物仅有 `payload.userId` 时仍能命中特别关注；仍不使用昵称兜底 | 真实 DOM 变化观察 |
 | 最新总回归门禁 | `npm run test:regression` | PASS：server 23、web 12、desktop 6 | 新发包前仍需重跑 |
 | 最新安全门禁 | `npm run audit:security` | PASS：high=0；保留 `exceljs -> uuid` moderate | 无 |
+
+## 10. 2026-06-11 V26.6.11.2 消息不丢门禁追加
+
+| P0 模块 | 自动化脚本 | 覆盖结论 | 仍需人工 |
+| --- | --- | --- | --- |
+| 采集批次失败不丢 | `regression-collector-loss-resilience.mjs` | `__douyinCollectorBatch` 失败时 requeue 未发送 batch，不再清空；pending 上限对齐 50000 | 真实网络/页面异常长时观察 |
+| DOM 文本复用不漏采 | `regression-collector-loss-resilience.mjs` | 聊天根节点监听 `characterData`，高频兜底扫描最新 80 行/250ms | 抖音 DOM 新结构截图 |
+| SSE 不发送前裁剪 | `regression-collector-loss-resilience.mjs`、`regression-comment-diagnostics.mjs` | 移除 400 条 pending trim；保留 `sse.write_false` 背压诊断 | 极端慢客户端观察 |
+| 前端评论入队不提前丢 | `regression-stream-queue-no-comment-loss.mjs` | 评论入队、窗口移动暂存均对齐当前 50000 事件边界；UI 仍只显示最近 200 | 用户手工观察 UI 近期窗口 |
+| 开发预览不误连其他项目 | `regression-vite-proxy-port.mjs` | Vite proxy 使用 `process.env.PORT`，避免 3100 被其他本地项目占用时打错后端 | 无 |
+| 真实直播间 smoke | `smoke-real-room-message-integrity.mjs` | `127874409138` 90 秒：raw 58、raw comments 3、persisted comments 1；2 条同源 DOM 重扫被正确去重，ledger 与 DB/SSE 一致 | 安装后更长时间人工验收 |

@@ -491,6 +491,8 @@ export class DouyinCollector {
             const giftElementStates = new WeakMap();
             const messageCleanupHandles = [];
             const pending = [];
+            const maxPendingCount = 50000;
+            let collectorClientSequence = 0;
             let flushTimer = 0;
             let flushing = false;
             let flushAgain = false;
@@ -2158,7 +2160,16 @@ export class DouyinCollector {
                         pendingLength: batch.length,
                         commentCount: batch.filter((item) => item?.category === 'comment').length,
                     });
-                    batch.splice(0, batch.length);
+                    pending.unshift(...batch);
+                    if (pending.length > maxPendingCount) {
+                        const removed = pending.splice(0, pending.length - maxPendingCount);
+                        diag('collector.flush', 'flush.pending_trimmed_after_retry', {
+                            category: 'comment',
+                            pendingLength: pending.length,
+                            trimmedLength: removed.length,
+                            commentCount: removed.filter((item) => item?.category === 'comment').length,
+                        });
+                    }
                 }
                 finally {
                     flushing = false;
@@ -2178,6 +2189,10 @@ export class DouyinCollector {
                 }, typeof delayOverride === 'number' ? delayOverride : flushDelayMs);
             };
             const push = (payload) => {
+                if (!payload.collectorClientId) {
+                    collectorClientSequence += 1;
+                    payload.collectorClientId = `${Date.now()}-${collectorClientSequence}`;
+                }
                 const signature = makeSignature(payload);
                 const coarseSignature = makeCoarseSignature(payload);
                 const now = Date.now();
@@ -2622,7 +2637,7 @@ export class DouyinCollector {
                 observer.observe(root, {
                     childList: true,
                     subtree: true,
-                    characterData: false,
+                    characterData: isChatSource,
                     attributes: isChatSource,
                     attributeFilter: isChatSource ? ['class', 'href', 'alt', 'title', 'aria-label', 'data-e2e'] : undefined,
                 });
@@ -2678,14 +2693,14 @@ export class DouyinCollector {
             cleanupHandles.push(window.setInterval(() => {
                 const roots = findChatRoots();
                 for (const root of roots) {
-                    const recentRows = Array.from(root.querySelectorAll(chatItemSelector)).slice(-14);
+                    const recentRows = Array.from(root.querySelectorAll(chatItemSelector)).slice(-80);
                     for (const row of recentRows) {
                         if (row instanceof HTMLElement) {
                             digestElement(row, 'chat-fast');
                         }
                     }
                 }
-            }, 600));
+            }, 250));
             cleanupHandles.push(window.setInterval(cleanupSeen, 5000));
             windowAny.__douyinCollectorCleanup = () => {
                 observers.forEach((observer) => observer?.disconnect());

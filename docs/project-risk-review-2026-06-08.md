@@ -637,3 +637,36 @@ Release note:
 
 - Real Douyin DOM changes can still expose parser shapes that mocks do not know yet. Treat real-room testing as smoke and discovery, not the only proof.
 - If the user reproduces comment loss or gift remark loss, collect session ID, timestamp, screenshot, copied diagnostics, visible live-room text, gift row, and highlight config line before changing logic again.
+
+## 2026-06-11 V26.6.11.2 Real-Room Message Loss Risk Closure
+
+### Status
+
+- P0 message-loss risks identified in this pass are mitigated and packaged as `V26.6.11.2`.
+- This does not change the user-confirmed product boundary: each session still retains 50,000 raw detail events, and UI still shows only the recent window.
+
+### Newly Mitigated P0 Risks
+
+| Risk | Previous trigger | Mitigation |
+| --- | --- | --- |
+| Collector batch send failure drops pending messages | `__douyinCollectorBatch` throws or the Node binding is briefly unavailable | Failed batches are requeued; pending is capped at the 50,000 session boundary instead of being cleared |
+| No-source comment retry creates duplicate rows | A retry of the same no-source comment receives a new collector sequence | Collector payload now carries `collectorClientId`; `buildUniqueKey` uses it as a stable retry key |
+| Douyin reuses a chat DOM row by changing text | MutationObserver did not listen to `characterData`; fallback scan could miss intermediate text | Chat observer now listens to text-node changes; fallback scan checks latest 80 rows every 250ms |
+| Server SSE drops queued events before client write | Pending SSE events over 400 were trimmed | SSE pending trim removed; backpressure remains observable through `sse.write_false` |
+| Frontend drops comments before display flush | Comment incoming queue was `EVENT_LIMITS.comment * 6` | Comment queue and window-move deferred buffers now preserve the 50,000 event session boundary before recent-window display trim |
+| Dev preview points to the wrong local project | Vite proxy hardcoded `localhost:3100`, while 3100 may be occupied | Vite proxy now follows `process.env.PORT` |
+
+### Verification
+
+| Check | Result |
+| --- | --- |
+| `npm run test:regression` | PASS: server 24, web 14, desktop 6 |
+| `npm run audit:security` | PASS: high=0; existing `exceljs -> uuid` moderate remains |
+| Real-room smoke | PASS: 90s on `https://live.douyin.com/127874409138`; raw comments 3, persisted comments 1, deduped 2 same-source DOM rescans |
+| `npm run desktop:pack:fast` | PASS; installer `糖三角-V26.6.11.2-安装包.exe`, SHA256 `1369BD4C4A56C7E12B001C9CEDC94C5BFD9ACF26CC8615B7158C34F39E06B2A4` |
+
+### Remaining Risks
+
+- Very long high-traffic real-room observation is still a smoke/discovery activity, not a hard automated gate.
+- Existing non-P0 risks remain: `collector.ts @ts-nocheck`, large-file coupling, export buffer memory profile, no code signing, no CI/coverage gate, no external API support.
+- If a distinct visible comment is still missing, the required evidence is: session ID, timestamp, screenshot, exact visible text, copied diagnostics, and whether the row appears in `/api/diagnostics/events`.

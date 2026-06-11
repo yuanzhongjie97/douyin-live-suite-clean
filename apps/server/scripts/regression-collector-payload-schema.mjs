@@ -41,6 +41,13 @@ assert.equal(
   'string giftCount should not cross the collector boundary as a number',
 );
 
+assert.equal(
+  normalizeCollectorPayloadItem({ category: 'comment', text: 'hello', collectorClientId: ' client-1 ' })
+    ?.collectorClientId,
+  'client-1',
+  'collector client id should cross the collector boundary for retry idempotency',
+);
+
 assert.equal(normalizeCollectorPayloadBatch([{ text: 'ok' }, { text: '' }, null]).length, 1);
 
 console.log('collector payload schema regression passed');

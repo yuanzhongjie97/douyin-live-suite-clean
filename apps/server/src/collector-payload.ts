@@ -17,11 +17,13 @@ export function normalizeCollectorPayloadItem(item: unknown): RawCollectorEvent 
   if (!text) {
     return undefined;
   }
+  const collectorClientId = normalizeWhitespace(String(source.collectorClientId ?? '')) || undefined;
   return {
     category,
     text,
     rawText,
     sourceId: normalizeWhitespace(String(source.sourceId ?? '')) || undefined,
+    ...(collectorClientId ? { collectorClientId } : {}),
     userName: normalizeWhitespace(String(source.userName ?? '')) || undefined,
     userId: normalizeWhitespace(String(source.userId ?? '')) || undefined,
     userLink: normalizeWhitespace(String(source.userLink ?? '')) || undefined,

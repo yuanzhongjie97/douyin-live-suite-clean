@@ -572,6 +572,58 @@ node apps\desktop\scripts\run-regressions.cjs
 | `npm run desktop:pack:fast` | PASS：生成 `糖三角-V26.6.10.2-安装包.exe` |
 | 安装包 SHA256 | `50AE8AF70AF1CDED74AA530DD5E67C1F7BEC8B7D2FBD9E389F353FD4B585660A` |
 
+## V26.6.11.2 追加测试 SOP：真实直播间消息链路不丢
+
+### TC-CAP-007_采集Batch失败重试不丢
+- Priority: P0
+- Requirement: 页面采集脚本调用 `__douyinCollectorBatch` 失败时，未发送 batch 必须回到 pending 队列，不能直接清空。
+- Steps:
+  1. 执行 `node --import tsx apps/server/scripts/regression-collector-loss-resilience.mjs`。
+  2. 检查源码门禁是否覆盖 requeue、文本节点监听、兜底扫描窗口和 SSE 不裁剪。
+- Expected Results:
+  1. batch failure path 使用 `pending.unshift(...batch)`。
+  2. 不再出现失败后 `batch.splice(0, batch.length)` 的静默丢弃。
+
+### TC-CAP-008_无SourceId评论重试幂等
+- Priority: P0
+- Requirement: 无稳定 `sourceId` 的评论在同一次 payload 重试时必须保持同一 `uniqueKey`，真实连续相同评论仍必须保留为不同事件。
+- Steps:
+  1. 执行 `node --import tsx apps/server/scripts/regression-comment-unique-key.mjs`。
+  2. 检查 `collectorClientId` 相关断言。
+- Expected Results:
+  1. 同一个 `collectorClientId` 重试生成同一 `uniqueKey`。
+  2. 不同采集 payload 的连续相同评论仍生成不同 `uniqueKey`。
+
+### TC-CAP-009_SSE与前端队列不提前裁剪评论
+- Priority: P0
+- Requirement: 服务端 SSE 不得发送前裁剪事件；前端评论入队和窗口移动暂存必须保留到当前 50000 事件边界，UI 近期展示窗口仍保持不变。
+- Steps:
+  1. 执行 `node apps/web/scripts/regression-stream-queue-no-comment-loss.mjs`。
+  2. 执行 `node --import tsx apps/server/scripts/regression-collector-loss-resilience.mjs`。
+- Expected Results:
+  1. 服务端不包含 `sse.queue_trimmed` 发送前裁剪逻辑。
+  2. 前端 comment queue、window-move deferred rows/messages 均引用 `SESSION_EVENT_RETAIN_LIMIT = 50000`。
+
+### TC-DEV-001_本地预览代理不误连其他项目
+- Priority: P1
+- Requirement: 当 3100 被其他本地项目占用时，Vite proxy 必须跟随当前后端 `PORT`。
+- Steps:
+  1. 执行 `node apps/web/scripts/regression-vite-proxy-port.mjs`。
+  2. 如需手工预览，使用同一个 `PORT` 启动 server/web。
+- Expected Results:
+  1. `apps/web/vite.config.ts` 使用 `process.env.PORT || '3100'`。
+  2. 不再硬编码 `target: 'http://localhost:3100'`。
+
+### V26.6.11.2 执行记录
+
+| 项 | 结果 |
+| --- | --- |
+| `npm run test:regression` | PASS：server 24、web 14、desktop 6 |
+| `npm run audit:security` | PASS：high=0；保留 `exceljs -> uuid` 2 个 moderate |
+| `node apps/server/scripts/smoke-real-room-message-integrity.mjs https://live.douyin.com/127874409138` | PASS：90 秒真实 smoke，raw comments 3、persisted comments 1、deduped 2，三条 raw 评论为同一 `sourceId` DOM 重扫 |
+| `npm run desktop:pack:fast` | PASS：生成 `糖三角-V26.6.11.2-安装包.exe`，packaged native ABI 门禁通过 |
+| 安装包 SHA256 | `1369BD4C4A56C7E12B001C9CEDC94C5BFD9ACF26CC8615B7158C34F39E06B2A4` |
+
 ## 测试报告模板
 
 ```markdown

@@ -95,4 +95,33 @@ assert.notEqual(
   'same-user same-text comments without source ids must be able to use payload sequence to avoid uniqueKey collisions',
 );
 
+const retryNoSourceKey = buildUniqueKey({
+  ...baseComment,
+  createdAt: '2026-06-03T10:00:04.000Z',
+  payloadJson: JSON.stringify({
+    category: 'comment',
+    rawText: 'repeat-user : same message',
+    text: 'same message',
+    collectorClientId: 'client-retry-1',
+    collectorSeq: 99,
+  }),
+});
+const retryNoSourceKeyAgain = buildUniqueKey({
+  ...baseComment,
+  createdAt: '2026-06-03T10:00:05.000Z',
+  payloadJson: JSON.stringify({
+    category: 'comment',
+    rawText: 'repeat-user : same message',
+    text: 'same message',
+    collectorClientId: 'client-retry-1',
+    collectorSeq: 100,
+  }),
+});
+
+assert.equal(
+  retryNoSourceKey,
+  retryNoSourceKeyAgain,
+  'collector retry id must make no-source comments idempotent across resend attempts',
+);
+
 console.log('comment unique key regression checks passed');

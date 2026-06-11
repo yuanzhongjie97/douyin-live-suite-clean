@@ -12,12 +12,12 @@ const collectorSource = readFileSync(path.join(root, 'apps/server/src/collector.
 
 assert.match(indexSource, /\/api\/diagnostics\/comment-flow/, 'comment diagnostics snapshot route must exist');
 assert.match(indexSource, /\/api\/diagnostics\/comment-flow\/reset/, 'comment diagnostics reset route must exist');
-assert.match(indexSource, /sse\.queue_trimmed/, 'SSE trim counter text must exist');
+assert.doesNotMatch(indexSource, /sse\.queue_trimmed/, 'SSE must not trim queued events before sending them');
 assert.match(indexSource, /sse\.write_false/, 'SSE write_false counter text must exist');
 assert.match(indexSource, /sse\.comment_event_seen/, 'SSE diagnostics should expose comment-specific event count');
 assert.match(indexSource, /sse\.comment_queue/, 'SSE diagnostics should expose comment-specific queue count');
 assert.match(indexSource, /sse\.comment_flushed_events/, 'SSE diagnostics should expose comment-specific flush count');
-assert.match(indexSource, /sse\.comment_queue_trimmed/, 'SSE diagnostics should expose comment-specific trim count');
+assert.doesNotMatch(indexSource, /sse\.comment_queue_trimmed/, 'SSE must not trim queued comments before sending them');
 
 const firstDiagId = buildCommentDiagId('session-a', {
   sourceId: 'source-1',

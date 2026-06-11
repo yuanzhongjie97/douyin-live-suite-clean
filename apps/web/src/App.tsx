@@ -129,6 +129,15 @@ const FONT_SIZE_OPTIONS: Array<{ id: MessageFontSize; label: string }> = [
 
 const VERSION_LOGS = [
   {
+    version: 'V26.6.11.2',
+    date: '2026-06-11',
+    items: [
+      '修复真实直播间消息链路丢失风险：采集批次发送失败会重试，不再直接丢弃 pending 消息。',
+      '采集页监听聊天文本节点变化并提高高频兜底扫描密度，降低抖音复用 DOM 行时漏采中间消息的概率。',
+      '服务端 SSE 不再发送前裁剪事件，前端评论入队保留到当前 5 万事件边界；开发预览代理跟随当前后端端口，避免误连其他本地项目。',
+    ],
+  },
+  {
     version: 'V26.6.11.1',
     date: '2026-06-11',
     items: [
@@ -720,6 +729,7 @@ const EVENT_LIMITS: Record<EventCategory, number> = {
   gift: 120,
   log: 220,
 };
+const SESSION_EVENT_RETAIN_LIMIT = 50000;
 
 const STREAM_BATCH_LIMITS: Record<EventCategory, number> = {
   comment: 260,
@@ -729,7 +739,7 @@ const STREAM_BATCH_LIMITS: Record<EventCategory, number> = {
   log: 20,
 };
 const STREAM_QUEUE_LIMITS: Record<EventCategory, number> = {
-  comment: EVENT_LIMITS.comment * 6,
+  comment: SESSION_EVENT_RETAIN_LIMIT,
   entry: EVENT_LIMITS.entry * 6,
   interaction: EVENT_LIMITS.interaction * 6,
   gift: EVENT_LIMITS.gift * 6,
@@ -743,8 +753,8 @@ const VIRTUAL_ROW_HEIGHT_PX = 42;
 const VIRTUAL_OVERSCAN_ROWS = 10;
 const HIDDEN_CATEGORY_DRAIN_DELAY_MS = 1200;
 const WINDOW_MOVE_FLUSH_DELAY_MS = 420;
-const WINDOW_MOVE_DEFERRED_STREAM_LIMIT = 1200;
-const WINDOW_MOVE_DEFERRED_MESSAGE_LIMIT = 240;
+const WINDOW_MOVE_DEFERRED_STREAM_LIMIT = SESSION_EVENT_RETAIN_LIMIT;
+const WINDOW_MOVE_DEFERRED_MESSAGE_LIMIT = SESSION_EVENT_RETAIN_LIMIT;
 const STATS_REFRESH_THROTTLE_MS = 2000;
 const SESSION_EVENT_REFRESH_COOLDOWN_MS = 15000;
 const RECENT_COMMENT_DUPLICATE_SCAN_LIMIT = 120;

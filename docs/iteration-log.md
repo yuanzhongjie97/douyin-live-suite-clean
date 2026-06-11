@@ -316,3 +316,12 @@
 - 内容：新增 `regression-gift-identity-update-remark-mock.mjs`，验证前端收到同一 `uniqueKey` 礼物身份更新时替换原行、不重复展示、保留原始 `createdAt/ingestSeq`，并重新命中特别关注备注。
 - 原因：用户要求用 mock 数据完善测试，目标是把“评论区重复/丢评论”和“礼物区丢备注”变成稳定可重复的自动化门禁。
 - 效果：未改业务功能、未重新打包；`npm run test:server` 通过 server 23，`npm run test:web` 通过 web 12，`npm run test:regression` 通过 server 23、web 12、desktop 6；`npm run audit:security` high=0，保留 `exceljs -> uuid` moderate。
+
+### 61 V26.6.11.2 真实直播间消息丢失修复
+- 内容：采集页批次发送失败时把未发送 batch 重新放回 pending 队列，不再直接清空；为无 `sourceId` 评论增加 `collectorClientId`，重试时保持同一 `uniqueKey`，真实连续相同评论仍可用不同 client id 区分。
+- 内容：采集页 `MutationObserver` 对聊天根节点启用文本节点变化监听，并把高频兜底扫描从每 600ms 最近 14 行提升到每 250ms 最近 80 行，降低抖音复用 DOM 行时漏采中间消息的风险。
+- 内容：服务端 SSE 不再在发送前裁剪 pending events；前端评论实时入队上限提升到当前每会话 50000 条保留边界，UI 仍只显示最近 200 条；Vite 开发代理跟随 `PORT`，避免 3100 被其他项目占用时误连。
+- 原因：用户反馈真实直播间仍出现消息丢失，要求提供直播间后真实测试并修复到底；排查发现风险点集中在采集 batch 失败丢弃、DOM 文本复用漏采、SSE/前端入队阶段裁剪，以及本地开发代理误连其他项目。
+- 验证：`npm run test:regression` 通过 server 24、web 14、desktop 6；`npm run audit:security` high=0，保留 `exceljs -> uuid` moderate；真实直播间 `https://live.douyin.com/127874409138` 运行 90 秒 smoke，房间 `婷哥kiki🎙️ ⁸⁰²³的抖音直播间`，raw 58、评论 raw 3、入库 56、入库评论 1、进场 53、互动 2；3 条 raw 评论为同一 `sourceId=7650137793749947402` 的 DOM 重扫，账本显示去重 2、入库 1、发布 1，符合“不重复、不丢真实不同消息”的边界。
+- 打包：版本升为 `V26.6.11.2` / `26.6.11-2`，`npm run desktop:pack:fast` 通过；安装包 `C:\Users\85855\PycharmProjects\PythonProject\douyin-live-suite-clean\apps\desktop\release\糖三角-V26.6.11.2-安装包.exe`，大小 `85,327,499` bytes，SHA256 `1369BD4C4A56C7E12B001C9CEDC94C5BFD9ACF26CC8615B7158C34F39E06B2A4`。
+- 边界：本轮不改变采集入口、SQLite 表结构、统计/导出口径、每会话原始明细 50000 条上限、UI 近期展示窗口和特别关注展示口径；安装后最终人工验收仍由用户拍板。

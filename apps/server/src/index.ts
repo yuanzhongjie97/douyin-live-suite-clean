@@ -367,14 +367,6 @@ export async function buildApp(options: { localApiToken?: string } = {}): Promis
         commentDiagnostics.increment('sse.comment_queue');
       }
       pendingEvents.push(payload);
-      if (pendingEvents.length > 400) {
-        const removed = pendingEvents.splice(0, pendingEvents.length - 400);
-        const removedCommentCount = removed.filter((item) => {
-          return Boolean(item) && typeof item === 'object' && (item as { category?: unknown }).category === 'comment';
-        }).length;
-        commentDiagnostics.increment('sse.queue_trimmed', removed.length);
-        commentDiagnostics.increment('sse.comment_queue_trimmed', removedCommentCount);
-      }
       if (pendingEvents.length >= 12) {
         if (flushTimer) {
           clearTimeout(flushTimer);

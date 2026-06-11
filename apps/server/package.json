@@ -1,6 +1,6 @@
 {
   "name": "@douyin-live-suite/server",
-  "version": "26.6.11-1",
+  "version": "26.6.11-2",
   "private": true,
   "main": "dist/index.js",
   "type": "module",

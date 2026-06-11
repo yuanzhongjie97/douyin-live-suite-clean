@@ -448,41 +448,53 @@ export function parseMessage(raw: RawCollectorEvent): {
 
 export function buildUniqueKey(event: Omit<LiveEvent, 'uniqueKey'>): string {
   let commentDisambiguator = '';
-  let commentStableSourceKey = '';
+  let commentStableKey = '';
   if (event.category === 'comment' && event.payloadJson) {
     try {
       const payload = JSON.parse(event.payloadJson) as {
         sourceId?: unknown;
         rawText?: unknown;
         text?: unknown;
+        collectorClientId?: unknown;
         collectorSeq?: unknown;
       };
       const sourceId = normalizeWhitespace(String(payload.sourceId ?? ''));
       if (sourceId) {
-        commentStableSourceKey = [
+        commentStableKey = [
           sourceId,
           normalizeWhitespace(String(payload.rawText ?? '')),
           normalizeWhitespace(String(payload.text ?? event.message ?? '')),
           normalizeWhitespace(String(event.userLink ?? event.userId ?? event.userName ?? '')),
         ].join('|');
       } else {
-        commentDisambiguator = [
-          payload.rawText ?? '',
-          payload.text ?? '',
-          payload.collectorSeq ?? '',
-        ].join('|');
+        const collectorClientId = normalizeWhitespace(String(payload.collectorClientId ?? ''));
+        if (collectorClientId) {
+          commentStableKey = [
+            'client',
+            collectorClientId,
+            normalizeWhitespace(String(payload.rawText ?? '')),
+            normalizeWhitespace(String(payload.text ?? event.message ?? '')),
+            normalizeWhitespace(String(event.userLink ?? event.userId ?? event.userName ?? '')),
+          ].join('|');
+        } else {
+          commentDisambiguator = [
+            payload.rawText ?? '',
+            payload.text ?? '',
+            payload.collectorSeq ?? '',
+          ].join('|');
+        }
       }
     } catch {
       commentDisambiguator = event.payloadJson;
     }
   }
   const seed =
-    event.category === 'comment' && commentStableSourceKey
+    event.category === 'comment' && commentStableKey
       ? [
           event.sessionId,
           event.category,
           event.roomId ?? '',
-          commentStableSourceKey,
+          commentStableKey,
         ].join('|')
       : [
           event.sessionId,

@@ -57,6 +57,7 @@ export interface RawCollectorEvent {
   text: string;
   rawText?: string;
   sourceId?: string;
+  collectorClientId?: string;
   ingestSeq?: number;
   userName?: string;
   userId?: string;
