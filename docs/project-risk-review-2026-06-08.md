@@ -562,3 +562,78 @@ Release note:
 
 - The exact screenshot DOM still has not been captured from the live room, so final field acceptance remains the user's decision.
 - Existing non-P0 risks remain unchanged: `@ts-nocheck` in the collector, large-file coupling, export buffer memory profile, no code signing, no CI/coverage gate, no external API support.
+
+## 2026-06-11 Additional P0 Comment/Gift Remark Closure
+
+### P0: Comment loss or duplicate ambiguity
+
+**Status:** Mitigated.
+
+**Risk before fix:** high-volume rooms could make it unclear whether a missing comment was dropped in collector parsing, backend dedupe, DB insert, SSE delivery, or frontend display. Without a shared ledger, diagnosis depended on screenshots and manual comparison.
+
+**Mitigation:**
+
+- Added capture integrity ledger counters for comment raw input, filter, dedupe, DB insert, DB unique ignore, and bus publish.
+- Preserved the existing unique-key boundary: stable `sourceId` rescans collapse to one event; no-source consecutive same comments remain distinguishable through sequence fields.
+- Added `/api/diagnostics/capture-integrity` and expanded copy diagnostics so support can compare visible comments against persisted DB rows and ledger counters.
+- Added runtime regression `apps/server/scripts/regression-capture-integrity-runtime.mjs` to verify two same-user same-text comments with different source IDs both persist, while same-source gift identity updates do not create duplicate rows.
+
+### P0: Gift remark loss for highlight users
+
+**Status:** Mitigated.
+
+**Risk before fix:** gift rows could initially arrive without stable identity, then receive `userId/userLink` later. If the update was not visible in diagnostics or not republished, the frontend could fail to recompute highlight remarks, making special-follow gifts look like ordinary gifts.
+
+**Mitigation:**
+
+- Highlight matching remains stable-identity only: top-level `userId/userLink`, payload `userId/userLink`, and sec_uid extracted from profile links; no nickname fallback.
+- Later gift identity updates update DB identity fields and payload, then republish the same gift row for frontend remark recomputation.
+- Diagnostics now record gift highlight match details: `category`, `uniqueKey`, `remark`, `matchedBy`, `matchedValue`.
+- Frontend copy diagnostics include persisted gifts, recent visible gifts, capture integrity ledger, and visible/persisted highlight match details.
+- Display boundary is unchanged: marker shows `特别关注 备注名`; gift body keeps `[原昵称] 礼 礼物内容`.
+
+### 2026-06-11 Verification
+
+| Command | Result |
+| --- | --- |
+| `node --import tsx apps/server/scripts/regression-capture-integrity-ledger.mjs` | PASS |
+| `node --import tsx apps/server/scripts/regression-capture-integrity-runtime.mjs` | PASS |
+| `node apps/web/scripts/regression-copy-diagnostics-gift-remarks.mjs` | PASS |
+| `node apps/web/scripts/regression-highlight-payload-identity.mjs` | PASS |
+| `npm run test:regression` | PASS: server 22, web 11, desktop 6 |
+| `npm run audit:security` | PASS: high=0; remaining `exceljs -> uuid` 2 moderate |
+
+**Remaining non-P0 risks unchanged:** `collector.ts @ts-nocheck`, large-file coupling, export buffer memory profile, no code signing, no CI/coverage gate, no external API support, and real-room long-duration smoke still requiring user final acceptance.
+
+## 2026-06-11 Strong Mock Retest for Comment/Gift Remark Closure
+
+### Status
+
+- P0 comment duplicate/loss and gift remark loss now have stronger mock gates beyond static source checks.
+- No business behavior was changed in this pass; the change is test/documentation hardening only.
+- No new installer was produced; current manual test package remains `V26.6.11.1`.
+
+### Additional Mitigation Evidence
+
+| Risk | Added Gate | Result |
+| --- | --- | --- |
+| Same DOM comment rescan creates duplicate rows | `regression-capture-integrity-strong-mock.mjs` | PASS: same `sourceId` rescan is deduped once |
+| Real repeated comments are accidentally dropped | `regression-capture-integrity-strong-mock.mjs` | PASS: same-user same-text and different-user same-text comments persist |
+| Gift identity arrives late and remark is not recalculated | `regression-capture-integrity-strong-mock.mjs`, `regression-gift-identity-update-remark-mock.mjs` | PASS: DB/payload update, SSE republish, frontend row replacement, and remark recomputation are covered |
+| Highlight identity only exists in payload | `regression-capture-integrity-strong-mock.mjs` | PASS: payload-only comment/gift identity can match highlight users |
+
+### Latest Verification
+
+| Command | Result |
+| --- | --- |
+| `node --import tsx apps/server/scripts/regression-capture-integrity-strong-mock.mjs` | PASS |
+| `node apps/web/scripts/regression-gift-identity-update-remark-mock.mjs` | PASS |
+| `npm run test:server` | PASS: server 23 scripts |
+| `npm run test:web` | PASS: web 12 scripts |
+| `npm run test:regression` | PASS: server 23, web 12, desktop 6 |
+| `npm run audit:security` | PASS: high=0; remaining `exceljs -> uuid` 2 moderate |
+
+### Residual Risk
+
+- Real Douyin DOM changes can still expose parser shapes that mocks do not know yet. Treat real-room testing as smoke and discovery, not the only proof.
+- If the user reproduces comment loss or gift remark loss, collect session ID, timestamp, screenshot, copied diagnostics, visible live-room text, gift row, and highlight config line before changing logic again.

@@ -129,6 +129,15 @@ const FONT_SIZE_OPTIONS: Array<{ id: MessageFontSize; label: string }> = [
 
 const VERSION_LOGS = [
   {
+    version: 'V26.6.11.1',
+    date: '2026-06-11',
+    items: [
+      '新增评论/礼物采集完整性账本，可追踪 raw、过滤、去重、入库、唯一冲突和 SSE 发布计数。',
+      '增强复制诊断：加入持久化礼物、近期礼物、采集完整性账本和特别关注命中字段 matchedBy/matchedValue。',
+      '礼物身份后到时继续只补齐身份和 payload，并重新发布同一礼物行以触发特别关注备注重算。',
+    ],
+  },
+  {
     version: 'V26.6.10.2',
     date: '2026-06-10',
     items: [
@@ -1752,6 +1761,24 @@ function getHighlightUserMatch(
   category: EventCategory,
   users: CompiledHighlightUser[],
 ): HighlightUserConfig | undefined {
+  return getHighlightMatchDetails(item, category, users)?.highlightUser;
+}
+
+function getHighlightMatchDetails(
+  item: LiveEvent,
+  category: EventCategory,
+  users: CompiledHighlightUser[],
+): {
+  uniqueKey: string;
+  category: 'comment' | 'gift';
+  highlightUser: HighlightUserConfig;
+  remark?: string;
+  matchedBy: string;
+  matchedValue: string;
+  userId?: string;
+  userLink?: string;
+  message?: string;
+} | undefined {
   if ((category !== 'comment' && category !== 'gift') || users.length === 0) {
     return undefined;
   }
@@ -1759,10 +1786,47 @@ function getHighlightUserMatch(
   const payload = readEventPayload(item);
   const linkUserId = extractProfileUserId(item.userLink);
   const payloadLinkUserId = extractProfileUserId(payload.userLink);
-  const candidates = [item.userId, item.userLink, linkUserId, payload.userId, payload.userLink, payloadLinkUserId]
-    .map((value) => normalizeHighlightIdentityToken(value))
-    .filter(Boolean);
-  return users.find((user) => candidates.some((candidate) => highlightPatternMatches(candidate, user)));
+  const candidates = [
+    { matchedBy: 'event.userId', value: item.userId },
+    { matchedBy: 'event.userLink', value: item.userLink },
+    { matchedBy: 'event.userLink.sec_uid', value: linkUserId },
+    { matchedBy: 'payload.userId', value: payload.userId },
+    { matchedBy: 'payload.userLink', value: payload.userLink },
+    { matchedBy: 'payload.userLink.sec_uid', value: payloadLinkUserId },
+  ] as Array<{ matchedBy: string; value?: string }>;
+  for (const user of users) {
+    for (const candidate of candidates) {
+      const normalized = normalizeHighlightIdentityToken(candidate.value);
+      if (!normalized || !highlightPatternMatches(normalized, user)) {
+        continue;
+      }
+      if (category === 'gift') {
+        return {
+          uniqueKey: item.uniqueKey,
+          category: 'gift',
+          highlightUser: user,
+          remark: user.remark,
+          matchedBy: candidate.matchedBy,
+          matchedValue: normalized,
+          userId: item.userId || payload.userId || undefined,
+          userLink: item.userLink || payload.userLink || undefined,
+          message: item.message || payload.text || payload.rawText || undefined,
+        };
+      }
+      return {
+        uniqueKey: item.uniqueKey,
+        category: 'comment',
+        highlightUser: user,
+        remark: user.remark,
+        matchedBy: candidate.matchedBy,
+        matchedValue: normalized,
+        userId: item.userId || payload.userId || undefined,
+        userLink: item.userLink || payload.userLink || undefined,
+        message: item.message || payload.text || payload.rawText || undefined,
+      };
+    }
+  }
+  return undefined;
 }
 const resolvedProfileUrlCache = new Map<string, string>();
 const resolvingProfileUrlCache = new Map<string, Promise<string | undefined>>();
@@ -3649,13 +3713,22 @@ export default function App() {
   const handleCopyDiagnostics = async (): Promise<void> => {
     const commentRows = Array.from(document.querySelectorAll('.event-panel-comment .event-row'));
     const currentSessionForDiagnostics = sessionId;
-    const [serverCommentFlow, persistedComments] = await Promise.all([
+    const [serverCommentFlow, captureIntegrity, persistedComments, persistedGifts] = await Promise.all([
       api.getCommentDiagnostics().catch((reason) => ({
         error: reason instanceof Error ? reason.message : '读取评论链路诊断失败',
+      })),
+      api.getCaptureIntegrityDiagnostics().catch((reason) => ({
+        error: reason instanceof Error ? reason.message : '读取采集完整性诊断失败',
       })),
       currentSessionForDiagnostics
         ? api.getEventDiagnostics(currentSessionForDiagnostics, 'comment', 1000).catch((reason) => ({
             error: reason instanceof Error ? reason.message : '读取服务端评论事件失败',
+            items: [] as LiveEvent[],
+          }))
+        : Promise.resolve({ items: [] as LiveEvent[] }),
+      currentSessionForDiagnostics
+        ? api.getEventDiagnostics(currentSessionForDiagnostics, 'gift', 1000).catch((reason) => ({
+            error: reason instanceof Error ? reason.message : '读取服务端礼物事件失败',
             items: [] as LiveEvent[],
           }))
         : Promise.resolve({ items: [] as LiveEvent[] }),
@@ -3666,6 +3739,24 @@ export default function App() {
         incomingQueuesRef.current[category].length,
       ]),
     );
+    const visibleHighlightMatches = [...events.comment, ...events.gift]
+      .map((item) =>
+        getHighlightMatchDetails(
+          item,
+          item.category === 'gift' ? 'gift' : 'comment',
+          compiledHighlightUsers,
+        ),
+      )
+      .filter(Boolean);
+    const persistedHighlightMatches = [...persistedComments.items, ...persistedGifts.items]
+      .map((item) =>
+        getHighlightMatchDetails(
+          item,
+          item.category === 'gift' ? 'gift' : 'comment',
+          compiledHighlightUsers,
+        ),
+      )
+      .filter(Boolean);
     const diagnostics = {
       runtime,
       stats,
@@ -3677,14 +3768,33 @@ export default function App() {
         recentComments: events.comment.slice(-RECENT_DIAGNOSTIC_COMMENT_LIMIT).map(summarizeDiagnosticEvent),
         recentSkippedComments: recentSkippedCommentsRef.current,
       },
+      giftItems: {
+        count: events.gift.length,
+        first: events.gift[0] ?? null,
+        last: events.gift[events.gift.length - 1] ?? null,
+        recentGifts: events.gift.slice(-RECENT_DIAGNOSTIC_COMMENT_LIMIT).map(summarizeDiagnosticEvent),
+      },
+      highlightMatches: {
+        visible: visibleHighlightMatches,
+        persisted: persistedHighlightMatches,
+        gift: persistedHighlightMatches.filter((item) => item?.category === 'gift'),
+      },
       server: {
         commentFlow: serverCommentFlow,
+        captureIntegrity,
         persistedComments: {
           count: persistedComments.items.length,
           first: persistedComments.items[persistedComments.items.length - 1] ?? null,
           last: persistedComments.items[0] ?? null,
           recent: persistedComments.items.slice(0, RECENT_DIAGNOSTIC_COMMENT_LIMIT).map(summarizeDiagnosticEvent),
           error: 'error' in persistedComments ? persistedComments.error : undefined,
+        },
+        persistedGifts: {
+          count: persistedGifts.items.length,
+          first: persistedGifts.items[persistedGifts.items.length - 1] ?? null,
+          last: persistedGifts.items[0] ?? null,
+          recent: persistedGifts.items.slice(0, RECENT_DIAGNOSTIC_COMMENT_LIMIT).map(summarizeDiagnosticEvent),
+          error: 'error' in persistedGifts ? persistedGifts.error : undefined,
         },
       },
       duplicateRules: {

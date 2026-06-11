@@ -52,10 +52,21 @@ export const api = {
   },
   getCommentDiagnostics(): Promise<{
     counters: Record<string, number>;
+    ledger?: Record<string, number>;
     recent: unknown[];
+    highlightMatches?: unknown[];
     generatedAt: string;
   }> {
     return request('/api/diagnostics/comment-flow');
+  },
+  getCaptureIntegrityDiagnostics(): Promise<{
+    counters: Record<string, number>;
+    ledger: Record<string, number>;
+    recent: unknown[];
+    highlightMatches: unknown[];
+    generatedAt: string;
+  }> {
+    return request('/api/diagnostics/capture-integrity');
   },
   getEventDiagnostics(
     sessionId: string,

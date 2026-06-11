@@ -84,3 +84,24 @@
 | 导出接口 | `regression-export-all-comments.mjs`、`regression-export-full-history-summary.mjs` | `/api/export.xlsx?sessionId=ehGrIJDv6x` | 生成 25,770 bytes Excel，SHA256 `F237C55ECE23AAAFFDC6C1350F1466DB253A410EAC1EA075591C986C19C9974C` |
 
 仍需用户最终验收：`V26.6.9.3` 虽已完成短时真实 smoke，但发布前是否接受该版本仍由用户拍板；建议在实际目标直播间观察更长时间，重点看高峰评论刷屏和连续礼物场景。
+
+## 8. 2026-06-11 P0 评论与礼物备注闭环覆盖
+
+| P0 模块 | 自动化脚本 | 覆盖结论 | 仍需人工 |
+| --- | --- | --- | --- |
+| 评论入库完整性账本 | `regression-capture-integrity-ledger.mjs`、`regression-capture-integrity-runtime.mjs`、`regression-comment-loss.mjs`、`regression-comment-unique-key.mjs` | raw/filter/dedupe/DB/SSE 计数可追踪；同源重扫不重复；真实连续相同评论不误删 | 长时大直播间真实观察 |
+| 礼物身份后到与备注重算 | `regression-capture-integrity-runtime.mjs`、`regression-gift-identity.mjs`、`regression-highlight-payload-identity.mjs` | 礼物后到稳定身份会更新 DB/payload 并重新发布；payload-only 身份可命中特别关注 | 真实特别关注命中截图 |
+| 复制诊断闭环 | `regression-copy-diagnostics-gift-remarks.mjs` | 诊断包含 persistedComments、persistedGifts、recentGifts、captureIntegrity、highlightMatches、matchedBy/matchedValue | 复现时复制诊断并附截图 |
+| 特别关注展示口径 | `regression-gift-remark-display.mjs`、`regression-stopped-session-and-remarks.mjs` | 标记区显示备注；正文用户名仍显示原昵称；不使用昵称兜底匹配 | 用户最终验收 |
+| 总回归门禁 | `npm run test:regression` | PASS：server 22、web 11、desktop 6 | 新发包前仍需重跑 |
+| 安全门禁 | `npm run audit:security` | PASS：high=0；保留 `exceljs -> uuid` moderate | 无 |
+
+## 9. 2026-06-11 P0 强 Mock 门禁补强
+
+| P0 模块 | 自动化脚本 | 覆盖结论 | 仍需人工 |
+| --- | --- | --- | --- |
+| 评论不丢不重强闭环 | `regression-capture-integrity-strong-mock.mjs` | 同源评论重扫只去重一次；同用户连续相同评论、不同用户相同评论均入库；DB、导出事件源、账本和 SSE 发布计数一致 | 长时大直播间观察 |
+| 礼物备注不丢强闭环 | `regression-capture-integrity-strong-mock.mjs`、`regression-gift-identity-update-remark-mock.mjs` | 礼物身份后到会更新 DB/payload 并重新发布；前端同 `uniqueKey` 替换原行、不重复展示、重新命中特别关注备注 | 真实特别关注命中截图 |
+| payload-only 稳定身份 | `regression-capture-integrity-strong-mock.mjs`、`regression-highlight-payload-identity.mjs` | 评论仅有 `payload.userLink`、礼物仅有 `payload.userId` 时仍能命中特别关注；仍不使用昵称兜底 | 真实 DOM 变化观察 |
+| 最新总回归门禁 | `npm run test:regression` | PASS：server 23、web 12、desktop 6 | 新发包前仍需重跑 |
+| 最新安全门禁 | `npm run audit:security` | PASS：high=0；保留 `exceljs -> uuid` moderate | 无 |

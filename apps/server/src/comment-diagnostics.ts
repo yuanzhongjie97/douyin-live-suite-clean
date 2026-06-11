@@ -36,7 +36,23 @@ export interface CommentDecision {
   extra?: Record<string, unknown>;
 }
 
+type IntegrityLedgerCategory = 'comment' | 'gift' | 'highlight';
+
+export interface HighlightMatchDiagnostic {
+  at: string;
+  sessionId?: string;
+  category: 'comment' | 'gift';
+  uniqueKey?: string;
+  userId?: string;
+  userLink?: string;
+  remark?: string;
+  matchedBy: string;
+  matchedValue: string;
+  message?: string;
+}
+
 const MAX_DECISIONS = 800;
+const MAX_HIGHLIGHT_MATCHES = 200;
 const TEXT_LIMIT = 160;
 
 function trimText(value: unknown): string | undefined {
@@ -68,10 +84,18 @@ export function buildCommentDiagId(
 
 export class CommentDiagnostics {
   private counters: CounterMap = {};
+  private ledger: Record<string, number> = {};
   private decisions: CommentDecision[] = [];
+  private highlightMatches: HighlightMatchDiagnostic[] = [];
 
   increment(name: string, by = 1): void {
     this.counters[name] = (this.counters[name] ?? 0) + by;
+  }
+
+  incrementLedger(category: IntegrityLedgerCategory, name: string, by = 1): void {
+    const key = `ledger.${category}.${name}`;
+    this.ledger[key] = (this.ledger[key] ?? 0) + by;
+    this.increment(key, by);
   }
 
   record(decision: Omit<CommentDecision, 'at'>): void {
@@ -90,17 +114,44 @@ export class CommentDiagnostics {
     }
   }
 
-  snapshot(): { counters: CounterMap; recent: CommentDecision[]; generatedAt: string } {
+  recordHighlightMatch(match: Omit<HighlightMatchDiagnostic, 'at'>): void {
+    const row: HighlightMatchDiagnostic = {
+      ...match,
+      at: new Date().toISOString(),
+      userId: trimText(match.userId),
+      userLink: trimText(match.userLink),
+      remark: trimText(match.remark),
+      matchedBy: trimText(match.matchedBy) ?? '',
+      matchedValue: trimText(match.matchedValue) ?? '',
+      message: trimText(match.message),
+    };
+    this.highlightMatches.push(row);
+    if (this.highlightMatches.length > MAX_HIGHLIGHT_MATCHES) {
+      this.highlightMatches.splice(0, this.highlightMatches.length - MAX_HIGHLIGHT_MATCHES);
+    }
+  }
+
+  snapshot(): {
+    counters: CounterMap;
+    ledger: Record<string, number>;
+    recent: CommentDecision[];
+    highlightMatches: HighlightMatchDiagnostic[];
+    generatedAt: string;
+  } {
     return {
       counters: { ...this.counters },
+      ledger: { ...this.ledger },
       recent: [...this.decisions],
+      highlightMatches: [...this.highlightMatches],
       generatedAt: new Date().toISOString(),
     };
   }
 
   reset(): void {
     this.counters = {};
+    this.ledger = {};
     this.decisions = [];
+    this.highlightMatches = [];
   }
 }
 

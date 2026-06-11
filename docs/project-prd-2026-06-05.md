@@ -3,7 +3,7 @@
 生成日期：2026-06-05  
 来源：当前源码、README、历史迭代文档和现有反推需求文档。
 
-更新记录：2026-06-08 已同步 P0 安全修复结论。本地 API 定位为 Electron 桌面端内部服务，不面向外部脚本或远程网页开放。
+更新记录：2026-06-08 已同步 P0 安全修复结论。本地 API 定位为 Electron 桌面端内部服务，不面向外部脚本或远程网页开放。2026-06-11 已同步评论丢失与礼物备注丢失 P0 强闭环：数据库、统计、导出、诊断链路以已入库事件为准，UI 继续只显示近期窗口。
 
 ## 1. 产品定位
 
@@ -321,3 +321,21 @@
 - 本次补强仍不改变采集入口、入库结构、统计口径、Excel 导出结构、每会话原始明细 50000 条上限和特别关注展示口径。
 - 安装包：`apps/desktop/release/糖三角-V26.6.10.2-安装包.exe`，SHA256 `50AE8AF70AF1CDED74AA530DD5E67C1F7BEC8B7D2FBD9E389F353FD4B585660A`。
 - 发布前最终验收仍由用户拍板；如真实直播间仍出现评论截断，需要保留会话 ID、时间点、截图、真实可见文本和复制诊断。
+
+## 15. 2026-06-11 P0 评论与礼物备注强闭环边界
+
+- “不丢评论/消息/备注”的验收口径固定为数据库、统计、导出和诊断可追溯；UI 继续按近期窗口展示，评论 200、礼物 120，不新增全量历史 UI。
+- 评论唯一键边界：有稳定 `sourceId` 的同一 DOM 重扫必须生成同一 `uniqueKey`，避免重复；无 `sourceId` 的连续相同评论必须可通过采集序号区分，避免误删真实重复发言。
+- 后端新增采集完整性账本，记录评论和礼物的 raw received、filtered、deduped、db inserted、db ignored unique、bus published，以及礼物身份后到重新发布次数。
+- 礼物备注边界：特别关注只按稳定身份匹配，候选包括顶层 `userId/userLink`、payload `userId/userLink`、从主页链接提取出的 sec_uid；仍不使用昵称兜底。
+- 礼物身份后到时只补齐身份字段和 payload，不覆盖原始事件的 `id`、`createdAt`、`ingestSeq`；补齐后重新发布同一行给前端，触发备注重新计算。
+- 复制诊断必须包含最近评论、最近礼物、持久化评论、持久化礼物、采集完整性账本、特别关注命中详情和命中字段 `matchedBy/matchedValue`。
+- 本轮不改变直播 URL allowlist、采集启动/停止流程、SQLite 表结构、统计/导出口径、每会话原始明细 50000 条上限、特别关注展示口径和安装包版本。
+
+## 16. 2026-06-11 P0 Mock 门禁补强
+
+- 新增强闭环 mock 验收：同一会话内同时构造同源评论重扫、同用户连续相同评论、不同用户相同评论、礼物身份后到、profile link 礼物命中、payload-only 评论/礼物命中。
+- 新增服务端门禁 `apps/server/scripts/regression-capture-integrity-strong-mock.mjs`：验证 DB、导出事件源、采集完整性账本、SSE 发布、特别关注命中诊断同时一致。
+- 新增前端门禁 `apps/web/scripts/regression-gift-identity-update-remark-mock.mjs`：验证同一 `uniqueKey` 礼物身份后到时前端替换原行、不追加重复行、保留原始 `createdAt/ingestSeq`，并重新命中特别关注备注。
+- 本次补强只增加 mock 测试与文档，不改业务功能、不改展示口径、不改 50000 条原始明细保留上限、不重新打包。
+- 验证结果：`npm run test:regression` 通过，server 23、web 12、desktop 6；`npm run audit:security` 通过 high 门禁，仍保留既有 `exceljs -> uuid` 2 个 moderate。

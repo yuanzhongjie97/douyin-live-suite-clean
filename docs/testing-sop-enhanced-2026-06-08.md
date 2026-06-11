@@ -70,6 +70,95 @@ node --import tsx apps\server\scripts\pressure-export-100k.mjs
 | `node apps/web/scripts/regression-highlight-payload-identity.mjs` | PASS | Payload-only identity can hit highlight users |
 | `npm run test:regression` | PASS | Run with project-local test storage; server 20, web 10, desktop 6 |
 
+## 2026-06-11 P0 Comment/Gift Remark Integrity Addendum
+
+### TC-CAP-012 Comment integrity ledger
+
+- Priority: P0
+- Requirement: Comment collection must be traceable from raw collector input to DB insert and SSE publish.
+- Test data:
+  - Same DOM/sourceId rescan.
+  - Different users with the same comment text.
+  - Same user sending the same comment text consecutively.
+- Expected:
+  - Same sourceId rescan does not create duplicate DB rows.
+  - Different real comments are not dropped by same text/user heuristics.
+  - Ledger exposes `ledger.comment.raw_received`, `ledger.comment.deduped`, `ledger.comment.db_inserted`, `ledger.comment.db_ignored_unique`, `ledger.comment.bus_published`.
+- Verification:
+  - `node --import tsx apps/server/scripts/regression-capture-integrity-ledger.mjs`
+  - `node --import tsx apps/server/scripts/regression-capture-integrity-runtime.mjs`
+  - `node --import tsx apps/server/scripts/regression-comment-loss.mjs`
+  - `node --import tsx apps/server/scripts/regression-comment-unique-key.mjs`
+
+### TC-HL-011 Gift remark stable identity closure
+
+- Priority: P0
+- Requirement: Gift rows must keep highlight remarks when the stable identity is available in top-level fields or payload, including later identity updates.
+- Expected:
+  - Gift with only payload `userId` or `userLink` can hit highlight users.
+  - Later identity update updates DB identity fields and payload, then republishes the same gift row for frontend remark recomputation.
+  - Highlight diagnostics include `category: gift`, `matchedBy`, `matchedValue`, `remark`, `uniqueKey`.
+  - Visible format remains `特别关注 备注名` plus `[原昵称] 礼 礼物内容`.
+- Verification:
+  - `node apps/web/scripts/regression-copy-diagnostics-gift-remarks.mjs`
+  - `node apps/web/scripts/regression-highlight-payload-identity.mjs`
+  - `node apps/web/scripts/regression-gift-remark-display.mjs`
+  - `node --import tsx apps/server/scripts/regression-capture-integrity-runtime.mjs`
+
+### 2026-06-11 Verification
+
+| Command | Result | Notes |
+| --- | --- | --- |
+| `node --import tsx apps/server/scripts/regression-capture-integrity-ledger.mjs` | PASS | Static gate for ledger fields and diagnostics endpoint |
+| `node --import tsx apps/server/scripts/regression-capture-integrity-runtime.mjs` | PASS | Runtime DB/SSE ledger and later gift identity update |
+| `node apps/web/scripts/regression-copy-diagnostics-gift-remarks.mjs` | PASS | Copy diagnostics include persisted gifts, recent gifts, captureIntegrity and highlight matches |
+| `node apps/web/scripts/regression-highlight-payload-identity.mjs` | PASS | Payload `userId/userLink` highlight candidates still covered |
+| `npm run test:regression` | PASS | server 22, web 11, desktop 6 |
+| `npm run audit:security` | PASS | high=0; remaining `exceljs -> uuid` 2 moderate |
+
+## 2026-06-11 P0 Strong Mock Gate Addendum
+
+### TC-CAP-013 End-to-end comment and gift remark mock closure
+
+- Priority: P0
+- Requirement: Comment duplicate prevention and gift remark recovery must be verifiable without depending on live-room timing.
+- Test data:
+  - Same comment `sourceId` scanned twice.
+  - Same user sends the same comment body twice with different `sourceId`.
+  - Different user sends the same comment body.
+  - Gift first arrives without stable identity, then later arrives with `userId/userLink`.
+  - Gift or comment only carries stable identity inside `payloadJson`.
+- Expected:
+  - DB keeps real repeated comments and drops only the true same-DOM rescan.
+  - Export event source includes all persisted mock rows.
+  - Ledger counts raw, deduped, DB inserted, SSE published, and gift identity update publish.
+  - Highlight diagnostics record `remark`, `matchedBy`, and `matchedValue` for comment and gift rows.
+- Verification: `node --import tsx apps/server/scripts/regression-capture-integrity-strong-mock.mjs`
+
+### TC-HL-012 Frontend gift identity update remark recomputation
+
+- Priority: P0
+- Requirement: When the backend republishes the same gift row with stronger identity, the frontend must replace the existing row and recompute highlight remark.
+- Test data:
+  - Initial gift row without `userId/userLink`.
+  - Same `uniqueKey` gift update with stable `userId/userLink`.
+- Expected:
+  - Visible gift list keeps one row, not duplicate rows.
+  - Replacement keeps original `createdAt` and original `payload.ingestSeq`.
+  - Updated row applies stable identity and can match highlight remark by `event.userId`.
+- Verification: `node apps/web/scripts/regression-gift-identity-update-remark-mock.mjs`
+
+### 2026-06-11 Strong Mock Verification
+
+| Command | Result | Notes |
+| --- | --- | --- |
+| `node --import tsx apps/server/scripts/regression-capture-integrity-strong-mock.mjs` | PASS | DB/export/ledger/SSE/highlight diagnostics strong mock |
+| `node apps/web/scripts/regression-gift-identity-update-remark-mock.mjs` | PASS | Same-uniqueKey gift identity update replaces row and recomputes remark |
+| `npm run test:server` | PASS | server 23 scripts |
+| `npm run test:web` | PASS | web 12 scripts |
+| `npm run test:regression` | PASS | server 23, web 12, desktop 6 |
+| `npm run audit:security` | PASS | high=0; remaining `exceljs -> uuid` 2 moderate |
+
 ## 2026-06-09 全量历史统计与发布门禁补充
 
 - 统计口径改为“尽量代表全量直播历史”：评论、进场、互动、礼物、日志、唯一用户、礼物排行和神秘人汇总应来自会话级累计汇总。

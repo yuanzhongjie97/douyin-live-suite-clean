@@ -245,6 +245,8 @@ export async function buildApp(options: { localApiToken?: string } = {}): Promis
 
   app.get('/api/diagnostics/comment-flow', async () => commentDiagnostics.snapshot());
 
+  app.get('/api/diagnostics/capture-integrity', async () => commentDiagnostics.snapshot());
+
   app.post('/api/diagnostics/comment-flow/reset', async () => {
     commentDiagnostics.reset();
     return { ok: true };

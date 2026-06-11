@@ -295,3 +295,24 @@
 - 修复：评论候选扫描纳入当前节点；候选清洗支持去掉用户名前缀；带 @ 或标点的真实评论候选不再仅因包含“直播间”等通用词被误判为噪音；完整候选包含当前短正文时提高评分。
 - 效果：`regression-comment-rich-mention-body.mjs` 新增整行 `aria-label` 完整正文用例；`npm run test:regression` 通过 server 20、web 10、desktop 6；`npm run audit:security` high=0；`npm run desktop:pack:fast` 通过。
 - 产物：`C:\Users\85855\PycharmProjects\PythonProject\douyin-live-suite-clean\apps\desktop\release\糖三角-V26.6.10.2-安装包.exe`，大小 `85,325,946` bytes，SHA256 `50AE8AF70AF1CDED74AA530DD5E67C1F7BEC8B7D2FBD9E389F353FD4B585660A`。
+
+### 58 2026-06-11 P0 评论与礼物备注强闭环
+- 内容：新增采集完整性账本和 `/api/diagnostics/capture-integrity`，记录评论/礼物从 raw 接收、过滤、去重、DB 入库、唯一冲突到 SSE 发布的关键计数。
+- 内容：复制诊断新增持久化礼物、近期礼物、采集完整性账本和特别关注命中详情；命中详情记录 `matchedBy/matchedValue`，便于定位礼物备注是否按稳定身份命中。
+- 内容：礼物身份后到仍只补齐身份字段和 payload，不覆盖原始排序字段；补齐后重新发布同一礼物行，让前端重新计算特别关注备注。
+- 原因：用户将“评论区丢评论”和“礼物区丢备注”列为频繁出现且未彻底修复的 P0，要求数据库、统计、导出、诊断链路不丢，UI 仍只显示近期窗口。
+- 效果：新增 `regression-capture-integrity-ledger.mjs`、`regression-capture-integrity-runtime.mjs`、`regression-copy-diagnostics-gift-remarks.mjs`；`npm run test:regression` 通过 server 22、web 11、desktop 6；`npm run audit:security` high=0，保留 `exceljs -> uuid` moderate。
+- 边界：未改版本号、未重新打包；未改采集入口、统计/导出口径、SQLite 表结构、每会话原始明细 50000 条上限、特别关注展示口径和昵称不兜底规则。
+
+### 59 V26.6.11.1 手工测试包
+- 内容：按用户日期版本规则升级为 `V26.6.11.1` / `26.6.11-1`，用于用户手工测试本轮 P0 评论与礼物备注闭环。
+- 验证：`node apps/desktop/scripts/regression-release-version.cjs` 通过；`npm run test:regression` 通过 server 22、web 11、desktop 6；`npm run audit:security` high=0，保留 `exceljs -> uuid` moderate。
+- 打包：`npm run desktop:pack:fast` 通过；打包过程自动将 `better-sqlite3` 从 Node ABI 127 重编为 Electron ABI 143，packaged native ABI 门禁通过。
+- 产物：`C:\Users\85855\PycharmProjects\PythonProject\douyin-live-suite-clean\apps\desktop\release\糖三角-V26.6.11.1-安装包.exe`，大小 `85,327,837` bytes，SHA256 `32B409FAC6C0E06E975C51F16B0FF9FB36A0A82BC28A7A55CD784DF49937E47C`。
+- 边界：该包供手工验收；是否发布仍由用户拍板。
+
+### 60 2026-06-11 P0 评论/礼物备注强 mock 门禁补强
+- 内容：新增 `regression-capture-integrity-strong-mock.mjs`，用隔离 mock 会话验证同源评论重扫、真实连续同文评论、不同用户同文评论、礼物身份后到、payload-only 身份、DB/export/ledger/SSE/highlight 诊断闭环。
+- 内容：新增 `regression-gift-identity-update-remark-mock.mjs`，验证前端收到同一 `uniqueKey` 礼物身份更新时替换原行、不重复展示、保留原始 `createdAt/ingestSeq`，并重新命中特别关注备注。
+- 原因：用户要求用 mock 数据完善测试，目标是把“评论区重复/丢评论”和“礼物区丢备注”变成稳定可重复的自动化门禁。
+- 效果：未改业务功能、未重新打包；`npm run test:server` 通过 server 23，`npm run test:web` 通过 web 12，`npm run test:regression` 通过 server 23、web 12、desktop 6；`npm run audit:security` high=0，保留 `exceljs -> uuid` moderate。

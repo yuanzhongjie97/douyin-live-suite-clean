@@ -404,3 +404,87 @@ Release artifact:
 Conclusion:
 - The known P0 capture issues are covered by automated regressions and packaged in V26.6.10.2.
 - Real-room final acceptance remains with the user. If a new rich-comment truncation appears, collect session ID, timestamp, screenshot, exact visible text, and copied diagnostics.
+
+## 17. 2026-06-11 P0 Comment/Gift Remark Closure Retest
+
+Purpose:
+- Turn recurring "comment loss" and "gift remark loss" issues into a traceable gate from collector input through DB, SSE, diagnostics, and frontend copy diagnostics.
+- Keep the confirmed product boundaries unchanged: UI recent window only, 50,000 retained raw events per session, stable-identity-only highlight matching, no nickname fallback.
+
+Changed coverage:
+- Added `apps/server/scripts/regression-capture-integrity-ledger.mjs`.
+- Added `apps/server/scripts/regression-capture-integrity-runtime.mjs`.
+- Added `apps/web/scripts/regression-copy-diagnostics-gift-remarks.mjs`.
+- Added `/api/diagnostics/capture-integrity`.
+- Copy diagnostics now include persisted gifts, recent gifts, capture integrity ledger, and highlight match details with `matchedBy/matchedValue`.
+
+Command results:
+
+| Command | Result |
+| --- | --- |
+| `node --import tsx apps/server/scripts/regression-capture-integrity-ledger.mjs` | PASS |
+| `node --import tsx apps/server/scripts/regression-capture-integrity-runtime.mjs` | PASS |
+| `node apps/web/scripts/regression-copy-diagnostics-gift-remarks.mjs` | PASS |
+| `node apps/web/scripts/regression-highlight-payload-identity.mjs` | PASS |
+| `npm run build:server` | PASS |
+| `npm run build:web` | PASS |
+| `npm run test:regression` | PASS: server 22, web 11, desktop 6 |
+| `npm run audit:security` | PASS: high=0; remaining `exceljs -> uuid` 2 moderate |
+
+Conclusion:
+- P0 comment loss and gift remark loss now have automated traceability gates.
+- No new package was produced in this pass; current installer remains V26.6.10.2 unless a separate packaging step is requested.
+- Real-room final acceptance remains with the user. For any future recurrence, collect session ID, timestamp, screenshot, visible text, gift row, highlight config line, and copied diagnostics.
+
+## 18. V26.6.11.1 Manual Test Package
+
+Purpose:
+- Package the 2026-06-11 P0 comment/gift remark closure for user manual testing.
+
+Version:
+- Visible release tag: `V26.6.11.1`
+- npm semver: `26.6.11-1`
+
+Command results:
+
+| Command | Result |
+| --- | --- |
+| `node apps/desktop/scripts/regression-release-version.cjs` | PASS |
+| `npm run test:regression` | PASS: server 22, web 11, desktop 6 |
+| `npm run audit:security` | PASS: high=0; remaining `exceljs -> uuid` 2 moderate |
+| `npm run desktop:pack:fast` | PASS; packaged native ABI gate passed during packaging |
+
+Release artifact:
+
+| Item | Value |
+| --- | --- |
+| Installer | `C:\Users\85855\PycharmProjects\PythonProject\douyin-live-suite-clean\apps\desktop\release\糖三角-V26.6.11.1-安装包.exe` |
+| Size | `85,327,837` bytes |
+| SHA256 | `32B409FAC6C0E06E975C51F16B0FF9FB36A0A82BC28A7A55CD784DF49937E47C` |
+
+Notes:
+- Packaging initially detected the expected Node ABI 127 vs Electron ABI 143 mismatch, then rebuilt `better-sqlite3` for Electron 40 ABI 143 and passed the packaged native ABI gate.
+- `finalize-installer.cjs` removed `win-unpacked` after packaging; a post-finalize manual re-run of `regression-packaged-native-abi.cjs --required` is therefore not applicable.
+- Final manual acceptance remains with the user.
+
+## 19. 2026-06-11 P0 Strong Mock Retest
+
+Purpose:
+- Strengthen the mock-based release gate for repeated comments and lost gift remarks after the P0 closure.
+- This pass only adds tests and documentation. It does not change business behavior and does not produce a new installer.
+
+Command results:
+
+| Command | Result | Notes |
+| --- | --- | --- |
+| `node --import tsx apps/server/scripts/regression-capture-integrity-strong-mock.mjs` | PASS | Same-source comment rescan, real repeated comments, identity-late gift, payload-only identity, DB/export/ledger/SSE/highlight diagnostics |
+| `node apps/web/scripts/regression-gift-identity-update-remark-mock.mjs` | PASS | Same-`uniqueKey` gift identity update replaces the row, keeps original order fields, and recomputes highlight remark |
+| `npm run test:server` | PASS | server 23 scripts |
+| `npm run test:web` | PASS | web 12 scripts |
+| `npm run test:regression` | PASS | build + server 23 + web 12 + desktop 6 |
+| `npm run audit:security` | PASS | high=0; remaining `exceljs -> uuid` 2 moderate |
+
+Conclusion:
+- Comment duplicate prevention and real repeated-comment preservation now have one end-to-end mock gate through DB, export source, ledger, and SSE.
+- Gift remark recovery now has both backend and frontend mock gates: backend updates/publishes the identity-late row; frontend replaces the existing row and recomputes the remark.
+- Real-room testing remains a smoke/DOM-change discovery step. If the issue recurs, collect session ID, timestamp, screenshot, visible live-room text, gift row, highlight config line, and copied diagnostics.

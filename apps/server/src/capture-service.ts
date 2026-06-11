@@ -154,6 +154,30 @@ const LIVE_STATS_ACTIVE_USER_LIMIT = 200;
 const MYSTERY_PERSON_LABEL = '\u795E\u79D8\u4EBA';
 const MYSTERY_KING_LABEL = '\u795E\u79D8\u738B\u8005';
 
+type CaptureIntegrityLedgerKey =
+  | 'ledger.comment.raw_received'
+  | 'ledger.comment.filtered'
+  | 'ledger.comment.deduped'
+  | 'ledger.comment.db_inserted'
+  | 'ledger.comment.db_ignored_unique'
+  | 'ledger.comment.bus_published'
+  | 'ledger.gift.raw_received'
+  | 'ledger.gift.filtered'
+  | 'ledger.gift.deduped'
+  | 'ledger.gift.db_inserted'
+  | 'ledger.gift.db_ignored_unique'
+  | 'ledger.gift.bus_published'
+  | 'ledger.gift.identity_update_published'
+  | 'ledger.highlight.comment_matched'
+  | 'ledger.highlight.gift_matched';
+
+function incrementCaptureLedger(key: CaptureIntegrityLedgerKey, by = 1): void {
+  const parts = key.split('.');
+  const category = parts[1] as 'comment' | 'gift' | 'highlight';
+  const name = parts.slice(2).join('.');
+  commentDiagnostics.incrementLedger(category, name, by);
+}
+
 function trimMapByAge<TKey, TValue extends { at?: number } | number>(map: Map<TKey, TValue>, limit: number): void {
   if (map.size <= limit) {
     return;
@@ -558,27 +582,54 @@ function highlightPatternMatches(candidate: string, pattern: string): boolean {
   return new RegExp(`^${regexSource}$`, 'iu').test(candidate);
 }
 
-function isHighlightUserEvent(event: LiveEvent, user: HighlightUserConfig): boolean {
+type HighlightEventMatch = {
+  user: HighlightUserConfig;
+  matchedBy: string;
+  matchedValue: string;
+};
+
+function getHighlightEventMatch(event: LiveEvent, user: HighlightUserConfig): HighlightEventMatch | undefined {
   const targetId = normalizeHighlightIdentityToken(user.userId);
   if (!targetId) {
-    return false;
+    return undefined;
   }
 
   let payloadUserId: string | undefined;
+  let payloadUserLink: string | undefined;
   let payloadLinkUserId: string | undefined;
   try {
     const payload = event.payloadJson ? (JSON.parse(event.payloadJson) as RawCollectorEvent) : undefined;
     payloadUserId = normalizeWhitespace(payload?.userId);
+    payloadUserLink = normalizeWhitespace(payload?.userLink);
     payloadLinkUserId = extractDouyinUserId(payload?.userLink);
   } catch {
     payloadUserId = undefined;
+    payloadUserLink = undefined;
     payloadLinkUserId = undefined;
   }
-  const linkUserId = extractDouyinUserId(event.userLink);
-  const candidates = [event.userId, event.userLink, linkUserId, payloadUserId, payloadLinkUserId]
-    .map((item) => normalizeHighlightIdentityToken(item))
-    .filter(Boolean);
-  return candidates.some((candidate) => highlightPatternMatches(candidate, targetId));
+  const candidates: Array<{ matchedBy: string; value?: string }> = [
+    { matchedBy: 'event.userId', value: event.userId },
+    { matchedBy: 'event.userLink', value: event.userLink },
+    { matchedBy: 'event.userLink.sec_uid', value: extractDouyinUserId(event.userLink) },
+    { matchedBy: 'payload.userId', value: payloadUserId },
+    { matchedBy: 'payload.userLink', value: payloadUserLink },
+    { matchedBy: 'payload.userLink.sec_uid', value: payloadLinkUserId },
+  ];
+  for (const candidate of candidates) {
+    const normalized = normalizeHighlightIdentityToken(candidate.value);
+    if (normalized && highlightPatternMatches(normalized, targetId)) {
+      return {
+        user,
+        matchedBy: candidate.matchedBy,
+        matchedValue: normalized,
+      };
+    }
+  }
+  return undefined;
+}
+
+function isHighlightUserEvent(event: LiveEvent, user: HighlightUserConfig): boolean {
+  return Boolean(getHighlightEventMatch(event, user));
 }
 async function clearBrowserProfileLocks(profileDir: string): Promise<void> {
   await Promise.all(
@@ -839,6 +890,7 @@ export class CaptureService {
   private liveStatsUserKeys = new Set<string>();
   private eventPersistQueue: Promise<void> = Promise.resolve();
   private identityObservationKeys = new Set<string>();
+  private highlightMatchDiagnosticKeys = new Set<string>();
   private lastCollectorDuplicateReason: string | undefined;
   private collectorEventSequence = 0;
   private collectorIngestSequence = 0;
@@ -1311,6 +1363,9 @@ export class CaptureService {
       includeMatched && targetSessionId && users.length
         ? this.db.getHighlightMatchedEvents(targetSessionId, users, 80)
         : [];
+    if (targetSessionId && users.length && matchedEvents.length) {
+      this.recordHighlightMatchDiagnostics(targetSessionId, matchedEvents, users);
+    }
 
     return {
       filePath,
@@ -1742,6 +1797,11 @@ export class CaptureService {
     for (const raw of expandedRawEvents) {
       const category = raw.category ?? classifyText(raw.text);
       if (category === 'comment') {
+        incrementCaptureLedger('ledger.comment.raw_received');
+      } else if (category === 'gift') {
+        incrementCaptureLedger('ledger.gift.raw_received');
+      }
+      if (category === 'comment') {
         this.recordCommentDiagnostic('service.persist', 'raw_comment_received', sessionId, raw);
       }
       const parsed = parseMessage({ ...raw, category });
@@ -1750,6 +1810,11 @@ export class CaptureService {
       const ignoreReason = this.getCollectorIgnoreReason(raw, parsedMessage, category);
       if (ignoreReason) {
         commentDiagnostics.increment(`service.ignored.${ignoreReason}`);
+        if (category === 'comment') {
+          incrementCaptureLedger('ledger.comment.filtered');
+        } else if (category === 'gift') {
+          incrementCaptureLedger('ledger.gift.filtered');
+        }
         if (category === 'comment') {
           this.recordCommentDiagnostic('service.filter', `ignored.${ignoreReason}`, sessionId, raw, {
             category,
@@ -1760,6 +1825,7 @@ export class CaptureService {
       }
       if (category === 'gift' && this.isMergedGiftNoise(raw, parsed)) {
         commentDiagnostics.increment('service.ignored.merged_gift_noise');
+        incrementCaptureLedger('ledger.gift.filtered');
         continue;
       }
       const normalizedGift =
@@ -1777,6 +1843,9 @@ export class CaptureService {
         )
       ) {
         commentDiagnostics.increment(`service.deduped.${this.lastCollectorDuplicateReason ?? 'unknown'}`);
+        if (category === 'comment') {
+          incrementCaptureLedger('ledger.comment.deduped');
+        }
         if (category === 'comment') {
           this.recordCommentDiagnostic('service.dedupe', `deduped.${this.lastCollectorDuplicateReason ?? 'unknown'}`, sessionId, raw, {
             category,
@@ -1890,6 +1959,7 @@ export class CaptureService {
         )
       ) {
         commentDiagnostics.increment(`service.deduped.${this.lastCollectorDuplicateReason ?? 'unknown'}`);
+        incrementCaptureLedger('ledger.gift.deduped');
         continue;
       }
 
@@ -1923,6 +1993,14 @@ export class CaptureService {
     const insertedCommentCount = rows.filter(
       (row, index) => row.category === 'comment' && insertResult.insertedIndexes.has(index),
     ).length;
+    const giftRows = rows.filter((row) => row.category === 'gift');
+    const insertedGiftCount = rows.filter(
+      (row, index) => row.category === 'gift' && insertResult.insertedIndexes.has(index),
+    ).length;
+    incrementCaptureLedger('ledger.comment.db_inserted', insertedCommentCount);
+    incrementCaptureLedger('ledger.comment.db_ignored_unique', commentRows.length - insertedCommentCount);
+    incrementCaptureLedger('ledger.gift.db_inserted', insertedGiftCount);
+    incrementCaptureLedger('ledger.gift.db_ignored_unique', giftRows.length - insertedGiftCount);
     commentDiagnostics.increment('db.comment_attempted', commentRows.length);
     commentDiagnostics.increment('db.comment_inserted', insertedCommentCount);
     commentDiagnostics.increment('db.comment_ignored_unique', commentRows.length - insertedCommentCount);
@@ -1951,6 +2029,7 @@ export class CaptureService {
     for (const row of persistedRows) {
       if (row.category === 'comment') {
         commentDiagnostics.increment('service.bus_published');
+        incrementCaptureLedger('ledger.comment.bus_published');
         commentDiagnostics.record({
           stage: 'bus.publish',
           reason: 'service.bus_published',
@@ -1963,10 +2042,13 @@ export class CaptureService {
           userId: row.userId,
           userLink: row.userLink,
         });
+      } else if (row.category === 'gift') {
+        incrementCaptureLedger('ledger.gift.bus_published');
       }
       this.bus.publish({ type: 'event', payload: row });
     }
     for (const row of persistedGiftUpdates) {
+      incrementCaptureLedger('ledger.gift.identity_update_published');
       this.bus.publish({ type: 'event', payload: row });
     }
   }
@@ -2119,6 +2201,65 @@ export class CaptureService {
     this.recentGiftFingerprints.clear();
     this.recentGiftCombos.clear();
     this.bus.publish({ type: 'session', payload: this.getRuntimeSnapshot() });
+  }
+
+  private recordHighlightMatchDiagnostics(
+    sessionId: string,
+    events: LiveEvent[],
+    users: HighlightUserConfig[],
+  ): void {
+    for (const row of events) {
+      if (row.category !== 'comment' && row.category !== 'gift') {
+        continue;
+      }
+      const match = users.map((user) => getHighlightEventMatch(row, user)).find(Boolean);
+      if (!match) {
+        continue;
+      }
+      const diagnosticKey = [
+        sessionId,
+        row.uniqueKey,
+        row.category,
+        match.user.userId,
+        match.matchedBy,
+        match.matchedValue,
+      ].join('|');
+      if (this.highlightMatchDiagnosticKeys.has(diagnosticKey)) {
+        continue;
+      }
+      this.highlightMatchDiagnosticKeys.add(diagnosticKey);
+      if (row.category === 'gift') {
+        incrementCaptureLedger('ledger.highlight.gift_matched');
+        commentDiagnostics.recordHighlightMatch({
+          sessionId,
+          category: 'gift',
+          uniqueKey: row.uniqueKey,
+          userId: row.userId,
+          userLink: row.userLink,
+          remark: match.user.remark || match.user.userId,
+          matchedBy: match.matchedBy,
+          matchedValue: match.matchedValue,
+          message: row.message,
+        });
+      } else {
+        incrementCaptureLedger('ledger.highlight.comment_matched');
+        commentDiagnostics.recordHighlightMatch({
+          sessionId,
+          category: 'comment',
+          uniqueKey: row.uniqueKey,
+          userId: row.userId,
+          userLink: row.userLink,
+          remark: match.user.remark || match.user.userId,
+          matchedBy: match.matchedBy,
+          matchedValue: match.matchedValue,
+          message: row.message,
+        });
+      }
+    }
+    if (this.highlightMatchDiagnosticKeys.size > 1200) {
+      const keep = Array.from(this.highlightMatchDiagnosticKeys).slice(-800);
+      this.highlightMatchDiagnosticKeys = new Set(keep);
+    }
   }
 
   private recordCommentDiagnostic(
