@@ -670,3 +670,32 @@ Release note:
 - Very long high-traffic real-room observation is still a smoke/discovery activity, not a hard automated gate.
 - Existing non-P0 risks remain: `collector.ts @ts-nocheck`, large-file coupling, export buffer memory profile, no code signing, no CI/coverage gate, no external API support.
 - If a distinct visible comment is still missing, the required evidence is: session ID, timestamp, screenshot, exact visible text, copied diagnostics, and whether the row appears in `/api/diagnostics/events`.
+
+## 2026-06-11 V26.6.11.3 Stale React Payload Risk Closure
+
+### Status
+
+- Additional P0 message-loss/remark-loss risk is mitigated and packaged as `V26.6.11.3`.
+- The product boundary is unchanged: 50,000 raw detail events per session, recent UI window only, no full-history UI, no nickname fallback for special-follow matching.
+
+### Newly Mitigated P0 Risk
+
+| Risk | Trigger | Impact | Mitigation |
+| --- | --- | --- | --- |
+| Stale React payload reused across recycled chat rows | Douyin virtual list reuses the same DOM row while React props from the previous message remain cached by element | A new visible comment/gift can inherit old `sourceId/userId/userLink`, causing false dedupe or missing special-follow remark | React payload cache now requires current row fingerprint match and a 120ms TTL; changed rows reread React props |
+| Same sourceId row reuse could be interpreted as duplicate | A row-like source id repeats but visible user/text changes | Distinct real comments could be collapsed | `regression-comment-sourceid-row-reuse.mjs` verifies same `sourceId` with different user/text persists as separate comments |
+
+### Verification
+
+| Check | Result |
+| --- | --- |
+| `npm run test:regression` | PASS: server 26, web 14, desktop 6 |
+| `npm run audit:security` | PASS: high=0; existing `exceljs -> uuid` moderate remains |
+| Real-room smoke | PASS: 180s on `https://live.douyin.com/127874409138`; raw comments 27, persisted comments 9, deduped 18 same-source rescans; all duplicate sourceId groups `variantCount=1` |
+| `npm run desktop:pack:fast` | PASS; installer `糖三角-V26.6.11.3-安装包.exe`, SHA256 `D76B5A9D02C5F38BE3FDB6720CAC20D686AE246809FCBBFC748E33B31B5AB56B` |
+
+### Remaining Risks
+
+- Very long high-traffic real-room observation remains a smoke/discovery activity.
+- Existing non-P0 risks remain unchanged: `collector.ts @ts-nocheck`, large-file coupling, export buffer memory profile, no code signing, no CI/coverage gate, no external API support.
+- If the user still observes a missing visible comment or gift remark, preserve session ID, timestamp, screenshot, copied diagnostics, exact visible text/gift row, and highlight config before changing logic again.

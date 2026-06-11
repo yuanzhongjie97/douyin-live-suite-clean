@@ -350,3 +350,11 @@
 - 新增边界：开发预览的 Vite proxy 必须跟随后端 `PORT`，避免 `3100` 被其他本地项目占用时误连错误后端。
 - `V26.6.11.2` 已对 `https://live.douyin.com/127874409138` 做 90 秒真实 smoke：raw comments 3、persisted comments 1、deduped 2，三条 raw 评论为同一 `sourceId` 的 DOM 重扫，DB/SSE/ledger 一致。
 - 本次不改变直播 URL allowlist、采集启动/停止流程、SQLite 表结构、统计/导出口径、每会话 50000 条原始明细上限、UI 近期窗口和特别关注展示口径。
+
+## 18. 2026-06-11 V26.6.11.3 采集身份缓存边界补充
+
+- 新增边界：采集器可以短时间缓存当前直播行的 React payload，但不得跨可见行内容变化复用旧 `sourceId/userId/userLink`。
+- 新增边界：当抖音直播页复用同一个 DOM 行承载新评论或新礼物时，新消息必须重新读取当前 React props 或使用当前可见文本/DOM 身份，不得继承旧消息身份。
+- 新增边界：同一 `sourceId` 只有在用户、正文、原始文本一致时才可视为同一真实消息的重复扫描；若用户或正文不同，必须作为不同真实消息保留。
+- `V26.6.11.3` 已对 `https://live.douyin.com/127874409138` 做 180 秒真实 smoke：raw comments 27、persisted comments 9、deduped 18、DB/SSE/ledger 一致；所有同 `sourceId` 重复组 `variantCount=1`。
+- 本次仍不改变直播 URL allowlist、采集启动/停止流程、SQLite 表结构、统计/导出口径、每会话 50000 条原始明细上限、UI 近期窗口和特别关注展示口径。

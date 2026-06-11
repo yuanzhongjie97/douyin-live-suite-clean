@@ -624,6 +624,48 @@ node apps\desktop\scripts\run-regressions.cjs
 | `npm run desktop:pack:fast` | PASS：生成 `糖三角-V26.6.11.2-安装包.exe`，packaged native ABI 门禁通过 |
 | 安装包 SHA256 | `1369BD4C4A56C7E12B001C9CEDC94C5BFD9ACF26CC8615B7158C34F39E06B2A4` |
 
+## V26.6.11.3 追加测试 SOP：React payload 缓存失效
+
+### TC-CAP-010_ReactPayload旧身份不得污染新消息
+- Priority: P0
+- Requirement: 抖音直播页复用同一个 DOM 行时，采集器不得跨可见内容变化复用旧 `sourceId/userId/userLink`。
+- Steps:
+  1. 执行 `node --import tsx apps/server/scripts/regression-react-data-cache-refresh.mjs`。
+  2. 检查采集器 React payload 缓存是否按当前行 fingerprint 和短 TTL 复用。
+- Expected Results:
+  1. 不存在永久 `reactDataCache.get(element)` 后直接返回旧 payload 的路径。
+  2. `reactDataCacheTtlMs` 必须显式注入浏览器页面上下文。
+
+### TC-CAP-011_同SourceId不同正文不得误去重
+- Priority: P0
+- Requirement: 同一 `sourceId` 若用户或正文不同，必须作为不同真实评论入库。
+- Steps:
+  1. 执行 `node --import tsx apps/server/scripts/regression-comment-sourceid-row-reuse.mjs`。
+  2. 检查 DB 行数、消息正文和采集完整性账本。
+- Expected Results:
+  1. 两条同 `sourceId`、不同用户/正文的评论均入库。
+  2. `ledger.comment.deduped` 不增加。
+
+### TC-CAP-012_真实直播间SourceId变体检查
+- Priority: P0
+- Requirement: 真实直播间 smoke 必须输出同 `sourceId` 重复组，并标识是否存在不同用户/正文变体。
+- Steps:
+  1. 执行 `node apps/server/scripts/smoke-real-room-message-integrity.mjs https://live.douyin.com/127874409138`。
+  2. 查看 `rawCommentDuplicateGroups` 与 `suspiciousRawCommentGroups`。
+- Expected Results:
+  1. `suspiciousRawCommentGroups.length` 为 0。
+  2. DB 插入评论数、SSE 发布评论数、ledger `db_inserted/bus_published` 一致。
+
+### V26.6.11.3 执行记录
+
+| 项 | 结果 |
+| --- | --- |
+| `npm run test:regression` | PASS：server 26、web 14、desktop 6 |
+| `npm run audit:security` | PASS：high=0；保留 `exceljs -> uuid` 2 个 moderate |
+| `node apps/server/scripts/smoke-real-room-message-integrity.mjs https://live.douyin.com/127874409138` | PASS：180 秒真实 smoke，raw comments 27、persisted comments 9、deduped 18；所有同 `sourceId` 重复组 `variantCount=1` |
+| `npm run desktop:pack:fast` | PASS：生成 `糖三角-V26.6.11.3-安装包.exe`，packaged native ABI 门禁通过 |
+| 安装包 SHA256 | `D76B5A9D02C5F38BE3FDB6720CAC20D686AE246809FCBBFC748E33B31B5AB56B` |
+
 ## 测试报告模板
 
 ```markdown

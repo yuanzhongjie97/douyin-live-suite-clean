@@ -12,6 +12,7 @@ const BATCH_FLUSH_IMMEDIATE_THRESHOLD = 8;
 const GIFT_PENDING_FLUSH_DELAY_MS = 1200;
 const NAVIGATION_TIMEOUT_MS = 60000;
 const NAVIGATION_READY_TIMEOUT_MS = 12000;
+const REACT_DATA_CACHE_TTL_MS = 120;
 const routedContexts = new WeakSet();
 const boundContexts = new WeakSet();
 const batchHandlers = new WeakMap();
@@ -454,7 +455,7 @@ export class DouyinCollector {
         if (!this.page || this.page.isClosed()) {
             return;
         }
-        await this.page.evaluate(({ giftKeywords, flushDelayMs, flushImmediateThreshold }) => {
+        await this.page.evaluate(({ giftKeywords, flushDelayMs, flushImmediateThreshold, reactDataCacheTtlMs }) => {
             const windowAny = window;
             if (windowAny.__douyinCollectorInstalled) {
                 return;
@@ -712,6 +713,12 @@ export class DouyinCollector {
                 return '';
             };
             const reactDataCache = new WeakMap();
+            const buildReactDataCacheFingerprint = (itemRoot) => normalize([
+                itemRoot.innerText || itemRoot.textContent || '',
+                itemRoot.getAttribute('data-e2e') || '',
+                itemRoot.getAttribute('title') || '',
+                itemRoot.getAttribute('aria-label') || '',
+            ].join('|'));
             const toPositiveInt = (value) => {
                 const numeric = Number.parseInt(String(value ?? ''), 10);
                 return Number.isFinite(numeric) && numeric > 0 ? numeric : 0;
@@ -720,15 +727,14 @@ export class DouyinCollector {
                 if (!(element instanceof HTMLElement)) {
                     return {};
                 }
-                const cached = reactDataCache.get(element);
-                if (cached) {
-                    return cached;
-                }
                 const itemRoot = findChatItemRoot(element);
                 if (!(itemRoot instanceof HTMLElement)) {
-                    const empty = {};
-                    reactDataCache.set(element, empty);
-                    return empty;
+                    return {};
+                }
+                const cacheFingerprint = buildReactDataCacheFingerprint(itemRoot);
+                const cached = reactDataCache.get(itemRoot);
+                if (cached && cached.fingerprint === cacheFingerprint && Date.now() - cached.at <= reactDataCacheTtlMs) {
+                    return cached.result;
                 }
                 const result = {
                     payload: undefined,
@@ -899,7 +905,7 @@ export class DouyinCollector {
                         structuredGiftNameCandidates[0] ||
                         '';
                 result.giftCount = Math.max(toPositiveInt(result.payload?.repeat_count), toPositiveInt(result.payload?.repeatCount), toPositiveInt(result.payload?.combo_count), toPositiveInt(result.payload?.comboCount), toPositiveInt(result.payload?.group_count), toPositiveInt(result.payload?.groupCount), toPositiveInt(result.payload?.total_count), toPositiveInt(result.payload?.totalCount), toPositiveInt(result.payload?.count), toPositiveInt(result.gift?.combo_count), toPositiveInt(result.gift?.comboCount), toPositiveInt(result.gift?.count), 0);
-                reactDataCache.set(element, result);
+                reactDataCache.set(itemRoot, { fingerprint: cacheFingerprint, at: Date.now(), result });
                 return result;
             };
             const collectUserMeta = (element) => {
@@ -2727,6 +2733,7 @@ export class DouyinCollector {
             giftKeywords: GIFT_KEYWORDS,
             flushDelayMs: BATCH_FLUSH_DELAY_MS,
             flushImmediateThreshold: BATCH_FLUSH_IMMEDIATE_THRESHOLD,
+            reactDataCacheTtlMs: REACT_DATA_CACHE_TTL_MS,
         });
     }
     async notifyFatal(error) {

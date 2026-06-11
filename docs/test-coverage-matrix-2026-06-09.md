@@ -116,3 +116,13 @@
 | 前端评论入队不提前丢 | `regression-stream-queue-no-comment-loss.mjs` | 评论入队、窗口移动暂存均对齐当前 50000 事件边界；UI 仍只显示最近 200 | 用户手工观察 UI 近期窗口 |
 | 开发预览不误连其他项目 | `regression-vite-proxy-port.mjs` | Vite proxy 使用 `process.env.PORT`，避免 3100 被其他本地项目占用时打错后端 | 无 |
 | 真实直播间 smoke | `smoke-real-room-message-integrity.mjs` | `127874409138` 90 秒：raw 58、raw comments 3、persisted comments 1；2 条同源 DOM 重扫被正确去重，ledger 与 DB/SSE 一致 | 安装后更长时间人工验收 |
+
+## 11. 2026-06-11 V26.6.11.3 React Payload 缓存失效门禁追加
+
+| P0 模块 | 自动化脚本 | 覆盖结论 | 仍需人工 |
+| --- | --- | --- | --- |
+| React payload 旧身份污染 | `regression-react-data-cache-refresh.mjs` | 采集器不得永久复用同一 DOM 元素旧 React payload；缓存必须按当前行 fingerprint 和短 TTL 失效 | 抖音 DOM 新结构截图 |
+| 同 sourceId 行复用不误删 | `regression-comment-sourceid-row-reuse.mjs` | 同一 `sourceId` 但不同用户/正文必须入库为两条真实评论 | 长时真实直播间观察 |
+| 真实直播间 sourceId 变体检查 | `smoke-real-room-message-integrity.mjs` | `127874409138` 180 秒：raw comments 27、persisted comments 9、deduped 18，所有同 `sourceId` 重复组 `variantCount=1` | 安装后用户最终验收 |
+| 最新总回归门禁 | `npm run test:regression` | PASS：server 26、web 14、desktop 6 | 新发包前继续重跑 |
+| 最新安全门禁 | `npm run audit:security` | PASS：high=0；保留 `exceljs -> uuid` moderate | 无 |

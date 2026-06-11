@@ -325,3 +325,12 @@
 - 验证：`npm run test:regression` 通过 server 24、web 14、desktop 6；`npm run audit:security` high=0，保留 `exceljs -> uuid` moderate；真实直播间 `https://live.douyin.com/127874409138` 运行 90 秒 smoke，房间 `婷哥kiki🎙️ ⁸⁰²³的抖音直播间`，raw 58、评论 raw 3、入库 56、入库评论 1、进场 53、互动 2；3 条 raw 评论为同一 `sourceId=7650137793749947402` 的 DOM 重扫，账本显示去重 2、入库 1、发布 1，符合“不重复、不丢真实不同消息”的边界。
 - 打包：版本升为 `V26.6.11.2` / `26.6.11-2`，`npm run desktop:pack:fast` 通过；安装包 `C:\Users\85855\PycharmProjects\PythonProject\douyin-live-suite-clean\apps\desktop\release\糖三角-V26.6.11.2-安装包.exe`，大小 `85,327,499` bytes，SHA256 `1369BD4C4A56C7E12B001C9CEDC94C5BFD9ACF26CC8615B7158C34F39E06B2A4`。
 - 边界：本轮不改变采集入口、SQLite 表结构、统计/导出口径、每会话原始明细 50000 条上限、UI 近期展示窗口和特别关注展示口径；安装后最终人工验收仍由用户拍板。
+
+### 62 V26.6.11.3 React payload 缓存失效修复
+- 内容：采集器读取直播行 React payload 时，不再对同一 DOM 行永久复用旧 `sourceId/userId/userLink`；缓存改为按当前行可见文本/属性 fingerprint 和 120ms TTL 失效。
+- 原因：真实直播间虚拟列表会复用 DOM 行。若旧 React payload 被带入新消息，可能造成新评论被旧 `sourceId` 或旧身份污染，进一步触发误去重或礼物/特别关注备注匹配失败。
+- 内容：新增 `regression-react-data-cache-refresh.mjs`，固定 React payload 缓存必须短 TTL 且按当前行 fingerprint 复用；新增 `regression-comment-sourceid-row-reuse.mjs`，固定同一 `sourceId` 但不同用户/正文的评论不得被去重。
+- 真实 smoke：`https://live.douyin.com/127874409138` 运行 180 秒，raw comments 27、persisted comments 9、deduped 18、DB/SSE/ledger 一致；所有同 `sourceId` 重复组 `variantCount=1`，说明去重的是同一评论重复扫描，没有发现不同真实评论被同 `sourceId` 合并。
+- 验证：`npm run test:regression` 通过 server 26、web 14、desktop 6；`npm run audit:security` high=0，保留 `exceljs -> uuid` moderate；`npm run desktop:pack:fast` 通过并执行 packaged native ABI 门禁。
+- 打包：版本升为 `V26.6.11.3` / `26.6.11-3`；安装包 `C:\Users\85855\PycharmProjects\PythonProject\douyin-live-suite-clean\apps\desktop\release\糖三角-V26.6.11.3-安装包.exe`，大小 `85,328,637` bytes，SHA256 `D76B5A9D02C5F38BE3FDB6720CAC20D686AE246809FCBBFC748E33B31B5AB56B`。
+- 边界：仍不改变采集入口、SQLite 表结构、统计/导出口径、每会话原始明细 50000 条上限、UI 近期展示窗口和特别关注展示口径；安装后最终人工验收仍由用户拍板。

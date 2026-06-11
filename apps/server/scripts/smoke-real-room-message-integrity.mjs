@@ -6,6 +6,31 @@ const projectRoot = resolve(process.cwd());
 const isolatedRoot = join(projectRoot, 'tmp', 'real-room-message-integrity');
 const dbPath = join(isolatedRoot, 'real-room-message-integrity.db');
 const defaultStorageRoot = resolve(projectRoot, '..', 'storage');
+const normalize = (value) => String(value ?? '').replace(/\s+/gu, ' ').trim();
+const normalizeSignatureText = (value) =>
+  normalize(value)
+    .replace(/[，。！？、,.!?]/gu, '')
+    .replace(/\[[^\]]{1,16}\]/gu, '')
+    .replace(/\s+/gu, '');
+const makeCommentSignature = (userName, text) =>
+  `${normalizeSignatureText(userName)}|${normalizeSignatureText(text)}`;
+const parseVisibleCommentText = (rawText) => {
+  const text = normalize(rawText);
+  const matched = text.match(/^(.{1,28}?)[\s]*[:：][\s]*(.{1,120})$/u);
+  if (!matched) {
+    return undefined;
+  }
+  const userName = normalize(matched[1]);
+  const body = normalize(matched[2]);
+  if (
+    !userName ||
+    !body ||
+    /(?:进入直播间|来了|点赞|关注|分享|推荐了直播|送出|赠送|礼物|粉丝团|灯牌|加入直播)/u.test(body)
+  ) {
+    return undefined;
+  }
+  return { userName, text: body, rawText: text, signature: makeCommentSignature(userName, body) };
+};
 
 rmSync(isolatedRoot, { recursive: true, force: true });
 mkdirSync(isolatedRoot, { recursive: true });
@@ -73,6 +98,12 @@ const rawCounters = {
 };
 let lastRawAt = '';
 const recentRawComments = [];
+const rawCommentGroups = new Map();
+const visibleCommentObserver = {
+  polls: 0,
+  candidates: 0,
+  comments: new Map(),
+};
 const published = [];
 const unsubscribe = service.bus.subscribe((message) => {
   if (message.type === 'event') {
@@ -91,6 +122,25 @@ const collector = new DouyinCollector(
       for (const event of events) {
         rawCounters[event.category] = (rawCounters[event.category] ?? 0) + 1;
         if (event.category === 'comment') {
+          const groupKey = event.sourceId || event.collectorClientId || `${event.userName}|${event.rawText}|${event.text}`;
+          const group = rawCommentGroups.get(groupKey) ?? {
+            sourceId: event.sourceId,
+            count: 0,
+            variants: new Set(),
+            samples: [],
+          };
+          group.count += 1;
+          group.variants.add([event.userName ?? '', event.text ?? '', event.rawText ?? ''].join('|'));
+          if (group.samples.length < 5) {
+            group.samples.push({
+              sourceId: event.sourceId,
+              collectorClientId: event.collectorClientId,
+              userName: event.userName,
+              text: event.text,
+              rawText: event.rawText,
+            });
+          }
+          rawCommentGroups.set(groupKey, group);
           recentRawComments.push({
             sourceId: event.sourceId,
             collectorClientId: event.collectorClientId,
@@ -122,10 +172,66 @@ const collector = new DouyinCollector(
   },
 );
 
+let visiblePollTimer;
 try {
   await collector.start();
+  const pollVisibleComments = async () => {
+    const page = collector.page;
+    if (!page || page.isClosed()) {
+      return;
+    }
+    const visibleRows = await page
+      .evaluate(() => {
+        const selectors = [
+          '[data-e2e*="chat"]',
+          '[data-e2e*="comment"]',
+          '[class*="chat"]',
+          '[class*="Chat"]',
+          '[class*="comment"]',
+          '[class*="Comment"]',
+          '[class*="message"]',
+          '[class*="Message"]',
+          'li',
+          '[role="listitem"]',
+        ].join(',');
+        return Array.from(document.querySelectorAll(selectors))
+          .slice(-160)
+          .map((node) => {
+            const element = node;
+            return String(element?.innerText || element?.textContent || '').replace(/\s+/gu, ' ').trim();
+          })
+          .filter(Boolean)
+          .slice(-80);
+      })
+      .catch(() => []);
+    visibleCommentObserver.polls += 1;
+    visibleCommentObserver.candidates += visibleRows.length;
+    for (const rowText of visibleRows) {
+      const parsed = parseVisibleCommentText(rowText);
+      if (!parsed) {
+        continue;
+      }
+      const existing = visibleCommentObserver.comments.get(parsed.signature) ?? {
+        ...parsed,
+        seen: 0,
+        firstSeenAt: new Date().toISOString(),
+        lastSeenAt: '',
+      };
+      existing.seen += 1;
+      existing.lastSeenAt = new Date().toISOString();
+      visibleCommentObserver.comments.set(parsed.signature, existing);
+    }
+  };
+  await pollVisibleComments();
+  visiblePollTimer = setInterval(() => {
+    void pollVisibleComments();
+  }, 1000);
   await new Promise((resolvePromise) => setTimeout(resolvePromise, durationMs));
+  await pollVisibleComments();
 } finally {
+  if (visiblePollTimer) {
+    clearInterval(visiblePollTimer);
+  }
   await collector.stop('real-room-smoke').catch(() => undefined);
   unsubscribe();
 }
@@ -134,6 +240,32 @@ const rows = db.getAllEventsForSession(sessionId);
 const comments = rows.filter((row) => row.category === 'comment');
 const gifts = rows.filter((row) => row.category === 'gift');
 const snapshot = commentDiagnostics.snapshot();
+const rawCommentDuplicateGroups = Array.from(rawCommentGroups.values())
+  .filter((group) => group.count > 1)
+  .map((group) => ({
+    sourceId: group.sourceId,
+    count: group.count,
+    variantCount: group.variants.size,
+    samples: group.samples,
+  }));
+const suspiciousRawCommentGroups = rawCommentDuplicateGroups.filter((group) => group.variantCount > 1);
+const persistedCommentSignatures = new Set(
+  comments.map((row) => {
+    const payload = row.payloadJson ? JSON.parse(row.payloadJson) : {};
+    return makeCommentSignature(row.userName || payload.userName || '', row.message || payload.text || '');
+  }),
+);
+const rawCommentSignatures = new Set(
+  Array.from(rawCommentGroups.values()).flatMap((group) =>
+    group.samples.map((item) => makeCommentSignature(item.userName || '', item.text || '')),
+  ),
+);
+const visibleComments = Array.from(visibleCommentObserver.comments.values()).sort((left, right) =>
+  String(left.firstSeenAt).localeCompare(String(right.firstSeenAt)),
+);
+const unmatchedVisibleComments = visibleComments
+  .filter((item) => !persistedCommentSignatures.has(item.signature) && !rawCommentSignatures.has(item.signature))
+  .slice(0, 20);
 const result = {
   url,
   durationMs,
@@ -155,6 +287,16 @@ const result = {
   },
   ledger: snapshot.ledger,
   counters: snapshot.counters,
+  rawCommentDuplicateGroups,
+  suspiciousRawCommentGroups,
+  visibleCommentObserver: {
+    polls: visibleCommentObserver.polls,
+    candidates: visibleCommentObserver.candidates,
+    uniqueComments: visibleComments.length,
+    unmatchedCount: unmatchedVisibleComments.length,
+    recent: visibleComments.slice(-20),
+    unmatched: unmatchedVisibleComments,
+  },
   recentRawComments,
   recentPersistedComments: comments.slice(-20).map((row) => ({
     id: row.id,
@@ -185,6 +327,11 @@ assert.equal(
 
 if (rawCounters.comment > 0) {
   assert.ok(comments.length > 0, 'real room smoke collected comments but persisted none');
+  assert.equal(
+    suspiciousRawCommentGroups.length,
+    0,
+    'same sourceId raw comment group contained different user/text variants; source identity may be stale',
+  );
   assert.ok(
     comments.every((row) => {
       const payload = row.payloadJson ? JSON.parse(row.payloadJson) : {};

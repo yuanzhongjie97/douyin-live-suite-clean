@@ -129,6 +129,15 @@ const FONT_SIZE_OPTIONS: Array<{ id: MessageFontSize; label: string }> = [
 
 const VERSION_LOGS = [
   {
+    version: 'V26.6.11.3',
+    date: '2026-06-11',
+    items: [
+      '修复真实直播间 DOM 行复用时 React payload 缓存可能带入旧 sourceId、userId、userLink 的风险，避免新评论被旧身份污染后误去重或丢备注。',
+      '新增同 sourceId 不同用户/正文不得被去重的回归，以及 React payload 缓存必须按当前行内容和短 TTL 失效的门禁。',
+      '真实直播间 127874409138 已执行 180 秒 smoke：raw/DB/SSE 账本一致，同 sourceId 重复组均为同一评论重复扫描。',
+    ],
+  },
+  {
     version: 'V26.6.11.2',
     date: '2026-06-11',
     items: [

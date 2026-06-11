@@ -548,3 +548,54 @@ Release artifact:
 Conclusion:
 - Known P0 message-loss risks in collector retry, DOM text reuse, SSE pending trim, frontend queue trim, and dev proxy port mismatch are mitigated.
 - Installation/manual acceptance still remains with the user.
+
+## 21. V26.6.11.3 React Payload Cache Retest
+
+Purpose:
+- Fix the remaining real-room risk where Douyin recycles a DOM chat row but the collector reuses stale React payload identity from the previous message.
+- Validate that stale `sourceId/userId/userLink` cannot cause false comment dedupe or gift/highlight remark loss.
+
+Fix summary:
+- React payload data is cached only by scoped chat item root, current visible-row fingerprint, and a short 120ms TTL.
+- If the visible row text/title/aria/data fingerprint changes, the collector rereads React props instead of reusing old identity.
+- Same `sourceId` with different user/text is explicitly protected by regression coverage.
+- Real-room smoke now reports duplicate `sourceId` groups and flags any group with different user/text variants.
+
+Command results:
+
+| Command | Result |
+| --- | --- |
+| `node --import tsx apps/server/scripts/regression-react-data-cache-refresh.mjs` | PASS |
+| `node --import tsx apps/server/scripts/regression-comment-sourceid-row-reuse.mjs` | PASS |
+| `npm run test:regression` | PASS: server 26, web 14, desktop 6 |
+| `npm run audit:security` | PASS: high=0; remaining `exceljs -> uuid` 2 moderate |
+| `node apps/server/scripts/smoke-real-room-message-integrity.mjs https://live.douyin.com/127874409138` | PASS: 180s real-room smoke |
+| `npm run desktop:pack:fast` | PASS; packaged native ABI gate passed |
+
+Real-room smoke result:
+
+| Item | Value |
+| --- | --- |
+| Room | `https://live.douyin.com/127874409138` |
+| Duration | 180 seconds |
+| Raw events | 210 |
+| Raw comments | 27 |
+| Persisted events | 122 |
+| Persisted comments | 9 |
+| Entries / interactions / gifts | 111 / 2 / 0 |
+| Comment ledger | raw 27, deduped 18, DB inserted 9, bus published 9 |
+| SourceId duplicate groups | all duplicate groups had `variantCount=1` |
+| Interpretation | The repeated raw comments were repeated scans of the same visible comments; no evidence of distinct real comments being merged or dropped in this smoke. |
+
+Release artifact:
+
+| Item | Value |
+| --- | --- |
+| Version | `V26.6.11.3` / `26.6.11-3` |
+| Installer | `C:\Users\85855\PycharmProjects\PythonProject\douyin-live-suite-clean\apps\desktop\release\糖三角-V26.6.11.3-安装包.exe` |
+| Size | `85,328,637` bytes |
+| SHA256 | `D76B5A9D02C5F38BE3FDB6720CAC20D686AE246809FCBBFC748E33B31B5AB56B` |
+
+Conclusion:
+- The newly identified stale React payload risk is mitigated and covered by regression tests.
+- Final real-room manual acceptance remains with the user.
