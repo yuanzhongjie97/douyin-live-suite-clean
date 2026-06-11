@@ -159,3 +159,12 @@
 | 最新总回归门禁 | `npm run test:regression` | PASS：server 28、web 15、desktop 6 | 新发包前继续重跑 |
 | 最新安全门禁 | `npm run audit:security` | PASS：high=0；保留 `exceljs -> uuid` moderate | 无 |
 | 打包门禁 | `npm run desktop:pack:fast` | PASS：`糖三角-V26.6.11.5-安装包.exe`，SHA256 `A8746750CCE8FF323EDE15A4DD8C0801BD84091E3925AAE87C9943F04C1B3118` | 安装后启动与真实业务手工验收 |
+## 15. 2026-06-12 分裂评论与富文本提及门禁追加
+
+| P0 模块 | 自动化脚本 | 覆盖结论 | 仍需人工 |
+| --- | --- | --- | --- |
+| `用户名：` 与正文拆分不丢 | `regression-comment-sibling-body-fallback.mjs` | 可见叶子只含用户名冒号时，采集器从父节点或相邻兄弟节点补齐正文 | 安装包长时间真实观察 |
+| 富文本 `@提及 + 正文 + 表情` 不截断 | `regression-comment-rich-mention-body.mjs` | 完整富文本不被短正文候选覆盖，重复表情不被误压缩 | 后续真实 DOM 变体继续 smoke |
+| 真实 smoke 全消息可见探针 | `regression-real-room-smoke-visible-message-probe.mjs`、`smoke-real-room-message-integrity.mjs` | smoke 输出评论、礼物、进场、互动和 unknown 可见行；180 秒样本四类 observer unmatched 均为 0 | 用户最终安装版验收 |
+| 总回归门禁 | `npm run test:regression` | PASS：server 31、web 16、desktop 6 | 发包前继续重跑 |
+| 安全审计门禁 | `npm run audit:security` | PASS：high=0；保留 `exceljs -> uuid` moderate | 无 |

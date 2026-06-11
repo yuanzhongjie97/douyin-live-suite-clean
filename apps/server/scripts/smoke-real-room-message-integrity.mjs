@@ -35,6 +35,36 @@ const parseVisibleCommentText = (rawText) => {
   }
   return { userName, text: body, rawText: text, signature: makeCommentSignature(userName, body) };
 };
+const makeVisibleMessageSignature = (category, rawText) =>
+  `${category}|${normalizeSignatureText(rawText)}`;
+const parseVisibleMessageText = (rawText) => {
+  const text = normalize(rawText);
+  if (!text || text.length > 220) {
+    return undefined;
+  }
+  const comment = parseVisibleCommentText(text);
+  if (comment) {
+    return {
+      category: 'comment',
+      rawText: text,
+      signature: makeVisibleMessageSignature('comment', `${comment.userName} ${comment.text}`),
+      parsed: comment,
+    };
+  }
+  let category = 'unknown';
+  if (/(?:送出|赠送|送给|打赏|投喂|送礼|礼物|粉丝团|灯牌|入团券|人气票|小心心|玫瑰|x\s*\d{1,5}|×\s*\d{1,5})/u.test(text)) {
+    category = 'gift';
+  } else if (/(?:进入直播间|来了|进入了直播间|加入直播)/u.test(text)) {
+    category = 'entry';
+  } else if (/(?:点赞|关注|分享|推荐了直播|为主播加了\s*\d+\s*分)/u.test(text)) {
+    category = 'interaction';
+  }
+  return {
+    category,
+    rawText: text,
+    signature: makeVisibleMessageSignature(category, text),
+  };
+};
 
 rmSync(isolatedRoot, { recursive: true, force: true });
 mkdirSync(isolatedRoot, { recursive: true });
@@ -108,12 +138,19 @@ const visibleCommentObserver = {
   candidates: 0,
   comments: new Map(),
 };
+const visibleMessageProbe = {
+  polls: 0,
+  candidates: 0,
+  messages: new Map(),
+};
 let pageProbeSnapshot = {
   scans: 0,
   mutations: 0,
   candidates: 0,
   comments: [],
+  messages: [],
 };
+const rawMessageSignatures = new Set();
 const published = [];
 const unsubscribe = service.bus.subscribe((message) => {
   if (message.type === 'event') {
@@ -131,6 +168,8 @@ const collector = new DouyinCollector(
       lastRawAt = new Date().toISOString();
       for (const event of events) {
         rawCounters[event.category] = (rawCounters[event.category] ?? 0) + 1;
+        rawMessageSignatures.add(makeVisibleMessageSignature(event.category, event.rawText || event.text || event.message || ''));
+        rawMessageSignatures.add(makeVisibleMessageSignature(event.category, [event.userName, event.text].filter(Boolean).join(' ')));
         if (event.category === 'comment') {
           const groupKey = event.sourceId || event.collectorClientId || `${event.userName}|${event.rawText}|${event.text}`;
           const group = rawCommentGroups.get(groupKey) ?? {
@@ -214,6 +253,7 @@ try {
         mutations: 0,
         candidates: 0,
         comments: {},
+        messages: {},
       };
       const readRows = () =>
         Array.from(document.querySelectorAll(visibleLeafSelectors))
@@ -243,15 +283,38 @@ try {
         if (!key) {
           return;
         }
-        const existing = state.comments[key] ?? {
+        const existingMessage = state.messages[key] ?? {
           rawText: key,
           seen: 0,
           firstSeenAt: new Date().toISOString(),
           lastSeenAt: '',
         };
-        existing.seen += 1;
-        existing.lastSeenAt = new Date().toISOString();
-        state.comments[key] = existing;
+        existingMessage.seen += 1;
+        existingMessage.lastSeenAt = new Date().toISOString();
+        state.messages[key] = existingMessage;
+        const colonCount = (key.match(/[:：]/gu) ?? []).length;
+        const commentMatched = colonCount === 1 ? key.match(/^(.{1,28}?)[\s]*[:：][\s]*(.{1,120})$/u) : undefined;
+        if (!commentMatched) {
+          return;
+        }
+        const userName = normalizeText(commentMatched[1]);
+        const body = normalizeText(commentMatched[2]);
+        if (
+          !userName ||
+          !body ||
+          /(?:进入直播间|来了|点赞|关注|分享|推荐了直播|送出|赠送|礼物|粉丝团|灯牌|加入直播)/u.test(body)
+        ) {
+          return;
+        }
+        const existingComment = state.comments[key] ?? {
+          rawText: key,
+          seen: 0,
+          firstSeenAt: new Date().toISOString(),
+          lastSeenAt: '',
+        };
+        existingComment.seen += 1;
+        existingComment.lastSeenAt = new Date().toISOString();
+        state.comments[key] = existingComment;
       };
       const scan = () => {
         const rows = readRows();
@@ -293,6 +356,7 @@ try {
             mutations: 0,
             candidates: 0,
             comments: [],
+            messages: [],
           };
         }
         return {
@@ -300,6 +364,7 @@ try {
           mutations: probe.mutations ?? 0,
           candidates: probe.candidates ?? 0,
           comments: Object.values(probe.comments ?? {}),
+          messages: Object.values(probe.messages ?? {}),
         };
       })
       .catch(() => pageProbeSnapshot);
@@ -352,7 +417,21 @@ try {
       .catch(() => []);
     visibleCommentObserver.polls += 1;
     visibleCommentObserver.candidates += visibleRows.length;
+    visibleMessageProbe.polls += 1;
+    visibleMessageProbe.candidates += visibleRows.length;
     for (const rowText of visibleRows) {
+      const message = parseVisibleMessageText(rowText);
+      if (message) {
+        const existingMessage = visibleMessageProbe.messages.get(message.signature) ?? {
+          ...message,
+          seen: 0,
+          firstSeenAt: new Date().toISOString(),
+          lastSeenAt: '',
+        };
+        existingMessage.seen += 1;
+        existingMessage.lastSeenAt = new Date().toISOString();
+        visibleMessageProbe.messages.set(message.signature, existingMessage);
+      }
       const parsed = parseVisibleCommentText(rowText);
       if (!parsed) {
         continue;
@@ -388,6 +467,15 @@ const rows = db.getAllEventsForSession(sessionId);
 const comments = rows.filter((row) => row.category === 'comment');
 const gifts = rows.filter((row) => row.category === 'gift');
 const snapshot = commentDiagnostics.snapshot();
+const persistedMessageSignatures = new Set(
+  rows.flatMap((row) => {
+    const payload = row.payloadJson ? JSON.parse(row.payloadJson) : {};
+    return [
+      makeVisibleMessageSignature(row.category, payload.rawText || row.message || payload.text || ''),
+      makeVisibleMessageSignature(row.category, [row.userName || payload.userName, row.message || payload.text].filter(Boolean).join(' ')),
+    ];
+  }),
+);
 const rawCommentDuplicateGroups = Array.from(rawCommentGroups.values())
   .filter((group) => group.count > 1)
   .map((group) => ({
@@ -432,6 +520,39 @@ const pageProbeComments = (pageProbeSnapshot.comments ?? [])
 const unmatchedPageProbeComments = pageProbeComments
   .filter((item) => !persistedCommentSignatures.has(item.signature) && !rawCommentSignatures.has(item.signature))
   .slice(0, 20);
+const visibleMessages = Array.from(visibleMessageProbe.messages.values()).sort((left, right) =>
+  String(left.firstSeenAt).localeCompare(String(right.firstSeenAt)),
+);
+const pageProbeMessages = (pageProbeSnapshot.messages ?? [])
+  .map((item) => {
+    const parsed = parseVisibleMessageText(item.rawText);
+    if (!parsed) {
+      return undefined;
+    }
+    return {
+      ...parsed,
+      seen: item.seen ?? 0,
+      firstSeenAt: item.firstSeenAt,
+      lastSeenAt: item.lastSeenAt,
+    };
+  })
+  .filter(Boolean)
+  .sort((left, right) => String(left.firstSeenAt).localeCompare(String(right.firstSeenAt)));
+const isMatchedVisibleMessage = (item) =>
+  persistedMessageSignatures.has(item.signature) ||
+  rawMessageSignatures.has(item.signature) ||
+  (item.category === 'comment' &&
+    item.parsed &&
+    (persistedCommentSignatures.has(item.parsed.signature) || rawCommentSignatures.has(item.parsed.signature)));
+const unmatchedVisibleMessages = visibleMessages
+  .filter((item) => item.category !== 'unknown' && !isMatchedVisibleMessage(item))
+  .slice(0, 20);
+const unmatchedPageProbeMessages = pageProbeMessages
+  .filter((item) => item.category !== 'unknown' && !isMatchedVisibleMessage(item))
+  .slice(0, 20);
+const recentUnknownVisibleMessages = [...visibleMessages, ...pageProbeMessages]
+  .filter((item) => item.category === 'unknown')
+  .slice(-20);
 const result = {
   url,
   durationMs,
@@ -472,6 +593,25 @@ const result = {
     recent: pageProbeComments.slice(-20),
     unmatched: unmatchedPageProbeComments,
   },
+  visibleMessageProbe: {
+    polls: visibleMessageProbe.polls,
+    candidates: visibleMessageProbe.candidates,
+    uniqueMessages: visibleMessages.length,
+    unmatchedCount: unmatchedVisibleMessages.length,
+    recent: visibleMessages.slice(-20),
+    unmatched: unmatchedVisibleMessages,
+  },
+  pageMessageProbe: {
+    scans: pageProbeSnapshot.scans,
+    mutations: pageProbeSnapshot.mutations,
+    candidates: pageProbeSnapshot.candidates,
+    uniqueMessages: pageProbeMessages.length,
+    unmatchedCount: unmatchedPageProbeMessages.length,
+    recent: pageProbeMessages.slice(-20),
+    unmatched: unmatchedPageProbeMessages,
+  },
+  unmatchedVisibleMessages,
+  recentUnknownVisibleMessages,
   recentRawComments,
   recentPersistedComments: comments.slice(-20).map((row) => ({
     id: row.id,

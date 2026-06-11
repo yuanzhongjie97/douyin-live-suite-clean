@@ -169,6 +169,37 @@ try {
     `comment body should use the complete row aria-label when child text is a short prefix, got ${JSON.stringify(rowAriaComment)}`,
   );
 
+  events.length = 0;
+  diagnostics.length = 0;
+
+  await page.evaluate(() => {
+    const root = document.querySelector('.webcast-chatroom___list');
+    root.replaceChildren();
+
+    const row = document.createElement('div');
+    row.className = 'webcast-chatroom___item';
+    row.setAttribute('role', 'listitem');
+    row.innerHTML = `
+      <a class="nickname" href="https://www.douyin.com/user/sec_real_mention_target">\u5A77\u54E5\u5BB6\u7B11\u7B11\uD83C\uDF3B\u2078\u2070\u00B2\u00B3</a>
+      <span class="mention">@\u8BF4\u4E0D\u5F97</span>
+      <span class="comment-content">\u6211\u4E0A\u4E86\u4E00\u4E2A\u5B9D\u7BB1\u7684\uFF0C\u4F60\u5E2E\u6211\u8865\u4E00\u4E2A</span>
+      <span class="emoji" role="img" aria-label="[\u97A0\u8EAC]"></span>
+      <span class="emoji" role="img" aria-label="[\u97A0\u8EAC]"></span>
+      <span class="emoji" role="img" aria-label="[\u97A0\u8EAC]"></span>
+    `;
+    root.append(row);
+  });
+
+  await page.waitForTimeout(220);
+
+  const realMentionComment = events.find((event) => event?.category === 'comment' && event.userName === '\u5A77\u54E5\u5BB6\u7B11\u7B11\uD83C\uDF3B\u2078\u2070\u00B2\u00B3');
+  assert.ok(realMentionComment, `expected real mention comment, got ${JSON.stringify({ events, diagnostics })}`);
+  assert.equal(
+    realMentionComment.text,
+    '@\u8BF4\u4E0D\u5F97 \u6211\u4E0A\u4E86\u4E00\u4E2A\u5B9D\u7BB1\u7684\uFF0C\u4F60\u5E2E\u6211\u8865\u4E00\u4E2A [\u97A0\u8EAC] [\u97A0\u8EAC] [\u97A0\u8EAC]',
+    `comment body must not drop the leading mention when a shorter content node also exists, got ${JSON.stringify(realMentionComment)}`,
+  );
+
   console.log('comment rich mention body regression checks passed');
 } finally {
   await context.close().catch(() => undefined);

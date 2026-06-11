@@ -786,3 +786,35 @@ Release note:
 - The fallback scan increases diagnostic noise counters such as `collector.digest.empty_text` because it deliberately samples more visible candidates; this is acceptable while no伪评论 enters DB.
 - Real-room smoke remains sampled validation. Long-running installed-app acceptance is still needed for a busy room period.
 - Existing non-P0 risks remain unchanged: `collector.ts @ts-nocheck`, large-file coupling, export buffer memory profile, no code signing, no CI/coverage gate, no external API support.
+## 2026-06-12 Split Comment and Rich Mention Risk Closure
+
+### Status
+
+- Two additional P0 source-level message-loss risks found in the real room are mitigated.
+- This entry records source and test closure only. It is not a packaged release record.
+- Product boundaries are unchanged: 50,000 raw detail events per session, UI recent window only, no full-history UI, no nickname fallback for special-follow matching.
+
+### Newly Mitigated Risks
+
+| Risk | Trigger | Impact | Mitigation |
+| --- | --- | --- | --- |
+| Split visible comment loses body | Douyin renders `用户名：` as one visible leaf and renders the body in the parent or next sibling | The user can see the comment body, but the collector may persist only an empty username/colon row or skip the real body | Collector now resolves split visible comment text from parent/next sibling before classification |
+| Rich mention comment is truncated | A row contains `@mention + text + emoji`, while an inner content node contains only the shorter plain body | DB/export/diagnostics miss the leading mention and trailing emoji markers, causing visible-message smoke mismatches | Body candidate selection preserves full rich text when it contains the shorter candidate and rich markers |
+| Repeated emoji body is over-collapsed | A real comment body consists of repeated bracket emoji markers such as `[比心] [比心] [比心]` | The persisted comment loses one or more emoji markers | Rich-prefix collapse now skips all-repeated marker bodies |
+
+### Evidence
+
+| Check | Result |
+| --- | --- |
+| `node --import tsx apps/server/scripts/regression-comment-sibling-body-fallback.mjs` | PASS |
+| `node --import tsx apps/server/scripts/regression-comment-rich-mention-body.mjs` | PASS |
+| `node --import tsx apps/server/scripts/regression-real-room-smoke-visible-message-probe.mjs` | PASS |
+| `npm run test:regression` | PASS: server 31, web 16, desktop 6 |
+| `npm run audit:security` | PASS: high=0; existing `exceljs -> uuid` moderate remains |
+| 180s real-room smoke | PASS: raw comments 21, persisted comments 7, deduped 14, all visible/page comment and message unmatched counts are 0 |
+
+### Remaining Risks
+
+- Long-running installed-app acceptance is still needed after the next package is produced.
+- Real-room smoke remains sampled validation and may expose new Douyin DOM variants later.
+- Existing non-P0 risks remain unchanged: `collector.ts @ts-nocheck`, large-file coupling, export buffer memory profile, no code signing, no CI/coverage gate, no external API support.

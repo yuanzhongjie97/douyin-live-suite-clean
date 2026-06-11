@@ -1078,6 +1078,43 @@ export class DouyinCollector {
                 }
                 return normalize(collectTextFragments(element, 8).join(' '));
             };
+            const resolveSplitVisibleCommentText = (element, text) => {
+                if (!(element instanceof HTMLElement)) {
+                    return text;
+                }
+                const prefixMatched = normalize(text).match(/^([^:\uFF1A]{1,24})\s*[:\uFF1A]\s*$/u);
+                const userName = normalizeUserName(prefixMatched?.[1]);
+                if (!prefixMatched || !isPlausibleCommentUserName(userName)) {
+                    return text;
+                }
+                const parseParentText = (candidateText) => {
+                    const normalizedCandidate = normalize(candidateText);
+                    if (!normalizedCandidate || normalizedCandidate === text) {
+                        return '';
+                    }
+                    if ((normalizedCandidate.match(/[:\uFF1A]/gu) ?? []).length !== 1) {
+                        return '';
+                    }
+                    const matched = normalizedCandidate.match(/^([^:\uFF1A]{1,24})\s*[:\uFF1A]\s*(.{1,160})$/u);
+                    if (!matched || normalizeUserName(matched[1]) !== userName) {
+                        return '';
+                    }
+                    const body = normalize(matched[2]);
+                    if (!body || genericPatterns.some((pattern) => pattern.test(body)) || genericFragments.some((fragment) => body.includes(fragment))) {
+                        return '';
+                    }
+                    return normalizedCandidate;
+                };
+                const parentText = parseParentText(visibleText(element.parentElement));
+                if (parentText) {
+                    return parentText;
+                }
+                const siblingText = normalize([
+                    text,
+                    visibleText(element.nextElementSibling),
+                ].join(' '));
+                return parseParentText(siblingText) || text;
+            };
             const skip = (text) => {
                 if (!text || text.length < 2 || text.length > 240) {
                     return true;
@@ -1581,7 +1618,12 @@ export class DouyinCollector {
                 const compactMatched = normalizedValue.match(/^(@\S{1,32})\s+\1(?=\s|$)(.*)$/u) ||
                     normalizedValue.match(/^((?:[\[\u3010][^\]\u3011]{1,24}[\]\u3011])\S{0,24})\s+\1(?=\s|$)(.*)$/u);
                 if (compactMatched) {
-                    return normalize(`${compactMatched[1]} ${compactMatched[2] || ''}`);
+                    const prefix = compactMatched[1];
+                    const restParts = normalize(compactMatched[2] || '').split(/\s+/u).filter(Boolean);
+                    if (!restParts.length || restParts.every((part) => part === prefix)) {
+                        return normalizedValue;
+                    }
+                    return normalize(`${prefix} ${compactMatched[2] || ''}`);
                 }
                 const parts = normalizedValue.split(/\s+/u).filter(Boolean);
                 const maxPrefixParts = Math.min(4, Math.floor(parts.length / 2));
@@ -1591,6 +1633,10 @@ export class DouyinCollector {
                     if (first &&
                         first === second &&
                         /@|[\[\u3010][^\]\u3011]{1,24}[\]\u3011]/u.test(first)) {
+                        const remainder = parts.slice(size * 2);
+                        if (!remainder.length || remainder.every((part) => part === first)) {
+                            continue;
+                        }
                         return normalize(parts.slice(size).join(' '));
                     }
                 }
@@ -1644,6 +1690,13 @@ export class DouyinCollector {
                 }
                 if (!normalizedCurrent || normalizedCandidate === normalizedCurrent) {
                     return true;
+                }
+                if (
+                    /@|[\[\u3010][^\]\u3011]{1,24}[\]\u3011]/u.test(normalizedCurrent) &&
+                    normalizedCurrent.includes(normalizedCandidate) &&
+                    normalizedCandidate.length < normalizedCurrent.length
+                ) {
+                    return false;
                 }
                 const currentHasRichBody = /@|[\[\u3010][^\]\u3011]{1,24}[\]\u3011]/u.test(normalizedCurrent);
                 if (currentHasRichBody &&
@@ -2436,7 +2489,7 @@ export class DouyinCollector {
                     });
                     return;
                 }
-                const text = rawText || normalize(collectTextFragments(scopedElement, 12).join(' '));
+                const text = resolveSplitVisibleCommentText(scopedElement, rawText || normalize(collectTextFragments(scopedElement, 12).join(' ')));
                 if (skip(text) && !looksLikeGiftElement(scopedElement)) {
                     diag('collector.digest', 'digest.skip_text', {
                         category: 'comment',

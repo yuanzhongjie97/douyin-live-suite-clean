@@ -358,3 +358,12 @@
 - 验证：新增 `regression-comment-visible-leaf-fallback.mjs`，先红后绿；新增页面级 `regression-comment-history-desc-order-ui.mjs`；`npm run test:regression` 通过 server 29、web 16、desktop 6；90 秒真实 smoke 在 `https://live.douyin.com/127874409138` 通过，raw comments 42、persisted comments 14、deduped 28、`suspiciousRawCommentGroups=[]`、`visibleCommentObserver.unmatchedCount=0`、`pageProbe.unmatchedCount=0`。
 - 打包：版本升为 `V26.6.11.6` / `26.6.11-6`；安装包 `C:\Users\85855\PycharmProjects\PythonProject\douyin-live-suite-clean\apps\desktop\release\糖三角-V26.6.11.6-安装包.exe`，大小 `85,328,840` bytes，SHA256 `A8E138B7F5E4266ECD6C4D0BCDCF66AAE0FFDD4AF5074A94A6ADB4E1FCBE96EE`。
 - 边界：不改变采集入口、SQLite 表结构、统计/导出口径、每会话原始明细 50000 条上限、UI 评论 200 条近期窗口和特别关注展示口径。
+
+### 66 2026-06-12 分裂评论与富文本提及补强
+- 内容：采集器补强真实直播间分裂 DOM 评论解析。当可见叶子节点只包含 `用户名：`，正文出现在父节点或相邻兄弟节点时，会合并成完整评论再进入原有解析链路。
+- 内容：修复富文本评论选择时短正文覆盖完整正文的问题。含 `@提及` 或表情标记的完整文本不再被较短的正文节点替换；重复表情如 `[比心] [比心] [比心]` 不再被误当成重复前缀压缩。
+- 内容：真实直播间 smoke 增加全可见消息探针，除评论外也记录礼物、进场、互动和 unknown 可见行，便于后续用户反馈时判断“可见但未采集”的具体类型。
+- 原因：真实直播间 `https://live.douyin.com/127874409138` 复现过两类采集缺口：`用户名：` 与正文被拆成兄弟节点，以及 `@提及 + 正文 + 表情` 被短正文候选截断。
+- 验证：`regression-comment-sibling-body-fallback.mjs`、`regression-comment-rich-mention-body.mjs`、`regression-real-room-smoke-visible-message-probe.mjs` 均通过；`npm run test:regression` 通过 server 31、web 16、desktop 6；`npm run audit:security` high=0，仅保留 `exceljs -> uuid` moderate。
+- 真实 smoke：180 秒真实直播间 smoke 通过，raw comments 21、persisted comments 7、deduped 14，`visibleCommentObserver.unmatchedCount=0`、`pageProbe.unmatchedCount=0`、`visibleMessageProbe.unmatchedCount=0`、`pageMessageProbe.unmatchedCount=0`。
+- 边界：本次是源码修复并提交 GitHub，未改版本号、未重新打包；不改变采集入口、SQLite 表结构、统计/导出口径、每会话原始明细 50000 条上限、UI 近期窗口和特别关注展示口径。

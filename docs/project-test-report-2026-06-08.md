@@ -768,3 +768,44 @@ Release artifact:
 | Installer | `C:\Users\85855\PycharmProjects\PythonProject\douyin-live-suite-clean\apps\desktop\release\糖三角-V26.6.11.6-安装包.exe` |
 | Size | `85,328,840` bytes |
 | SHA256 | `A8E138B7F5E4266ECD6C4D0BCDCF66AAE0FFDD4AF5074A94A6ADB4E1FCBE96EE` |
+
+## 25. 2026-06-12 Split Comment and Rich Mention Retest
+
+Purpose:
+- Continue the P0 investigation for user-reported comment loss in the real Douyin room `https://live.douyin.com/127874409138`.
+- Verify two newly observed DOM shapes: username/body split across sibling nodes, and rich comments where a shorter body node can hide the full `@mention + text + emoji` row text.
+
+Fix summary:
+- The collector now merges split visible comments when a leaf node contains only `用户名：` and the actual body is available on the parent or next sibling.
+- Rich comment body selection no longer lets a shorter candidate replace a full text that already contains `@mention` or bracket emoji markers.
+- Repeated bracket emoji bodies such as `[比心] [比心] [比心]` are preserved instead of being collapsed as duplicate rich prefixes.
+- Real-room smoke now reports all visible leaf message rows, including comments, gifts, entries, interactions and unknown rows.
+
+Command results:
+
+| Command | Result |
+| --- | --- |
+| `node --import tsx apps/server/scripts/regression-comment-sibling-body-fallback.mjs` | PASS |
+| `node --import tsx apps/server/scripts/regression-comment-rich-mention-body.mjs` | PASS |
+| `node --import tsx apps/server/scripts/regression-real-room-smoke-visible-message-probe.mjs` | PASS |
+| `npm run test:regression` | PASS: server 31, web 16, desktop 6 |
+| `npm run audit:security` | PASS: high=0; remaining `exceljs -> uuid` 2 moderate |
+
+Real-room smoke evidence:
+
+| Item | Value |
+| --- | --- |
+| Room | `https://live.douyin.com/127874409138` |
+| Duration | 180 seconds |
+| Raw comments | 21 |
+| Persisted comments | 7 |
+| Deduped comments | 14 |
+| Visible comment observer | `unmatchedCount=0` |
+| In-page comment probe | `unmatchedCount=0` |
+| Visible message probe | `unmatchedCount=0` |
+| In-page message probe | `unmatchedCount=0` |
+| Unknown visible rows | `[]` |
+
+Conclusion:
+- The two concrete real-room loss modes found after `V26.6.11.6` are mitigated at source level and covered by regression scripts.
+- This pass was not packaged and did not change the release version. Installed-app acceptance remains with the user after the next package is produced.

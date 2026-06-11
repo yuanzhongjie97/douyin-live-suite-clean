@@ -815,3 +815,47 @@ node apps\desktop\scripts\run-regressions.cjs
 | `npm run audit:security` | PASS：high=0；保留 `exceljs -> uuid` moderate |
 | `npm run desktop:pack:fast` | PASS：生成 `糖三角-V26.6.11.5-安装包.exe`，packaged native ABI 门禁通过 |
 | 安装包 SHA256 | `A8746750CCE8FF323EDE15A4DD8C0801BD84091E3925AAE87C9943F04C1B3118` |
+## 2026-06-12 追加测试 SOP：分裂评论与富文本提及完整性
+
+### TC-CAP-017_用户名冒号与正文拆分时不得丢正文
+- Priority: P0
+- Requirement: 当抖音 DOM 把 `用户名：` 放在一个可见叶子节点、把正文放在父节点或相邻兄弟节点时，采集器必须合并为完整评论。
+- Steps:
+  1. 执行 `node --import tsx apps/server/scripts/regression-comment-sibling-body-fallback.mjs`。
+  2. 检查 mock DOM 中 `简白💥：` 与兄弟节点 `[比心] [比心] [比心]` 是否合并入库前事件。
+- Expected Results:
+  1. 采集事件 `userName` 为 `简白💥`。
+  2. 采集事件 `text` 为 `[比心] [比心] [比心]`。
+  3. 不产生只含 `用户名：` 的空正文评论。
+
+### TC-CAP-018_富文本提及不得被短正文覆盖
+- Priority: P0
+- Requirement: 当评论行包含 `@提及`、正文和多个表情标记时，完整正文优先于较短的内部正文节点。
+- Steps:
+  1. 执行 `node --import tsx apps/server/scripts/regression-comment-rich-mention-body.mjs`。
+  2. 检查真实样本形态 `@说不得 我上了一个宝箱的，你帮我补一个 [鞠躬] [鞠躬] [鞠躬]` 是否完整保留。
+- Expected Results:
+  1. `@提及` 不丢。
+  2. 尾部重复表情不被误压缩。
+  3. 较短正文候选不得覆盖完整富文本正文。
+
+### TC-CAP-019_真实Smoke必须覆盖所有可见消息行
+- Priority: P0
+- Requirement: 真实直播间 smoke 不只检查冒号评论，还要输出礼物、进场、互动和 unknown 可见行，便于定位“可见但未采集”的下一轮样本。
+- Steps:
+  1. 执行 `node --import tsx apps/server/scripts/regression-real-room-smoke-visible-message-probe.mjs`。
+  2. 对真实直播间执行 `REAL_ROOM_SMOKE_MS=180000 node apps/server/scripts/smoke-real-room-message-integrity.mjs https://live.douyin.com/127874409138`。
+- Expected Results:
+  1. smoke 输出 `visibleMessageProbe`、`pageMessageProbe`、`unmatchedVisibleMessages` 和 `recentUnknownVisibleMessages`。
+  2. `visibleMessageProbe.unmatchedCount=0` 且 `pageMessageProbe.unmatchedCount=0`，或输出明确 unmatched 样本进入下一轮定位。
+
+### 2026-06-12 执行记录
+
+| 项 | 结果 |
+| --- | --- |
+| `node --import tsx apps/server/scripts/regression-comment-sibling-body-fallback.mjs` | PASS |
+| `node --import tsx apps/server/scripts/regression-comment-rich-mention-body.mjs` | PASS |
+| `node --import tsx apps/server/scripts/regression-real-room-smoke-visible-message-probe.mjs` | PASS |
+| `npm run test:regression` | PASS：server 31、web 16、desktop 6 |
+| `npm run audit:security` | PASS：high=0；保留 `exceljs -> uuid` 2 个 moderate |
+| 180 秒真实 smoke | PASS：raw comments 21、persisted comments 7、deduped 14、四类 visible/page observer `unmatchedCount=0` |
