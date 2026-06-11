@@ -168,3 +168,14 @@
 | 真实 smoke 全消息可见探针 | `regression-real-room-smoke-visible-message-probe.mjs`、`smoke-real-room-message-integrity.mjs` | smoke 输出评论、礼物、进场、互动和 unknown 可见行；180 秒样本四类 observer unmatched 均为 0 | 用户最终安装版验收 |
 | 总回归门禁 | `npm run test:regression` | PASS：server 31、web 16、desktop 6 | 发包前继续重跑 |
 | 安全审计门禁 | `npm run audit:security` | PASS：high=0；保留 `exceljs -> uuid` moderate | 无 |
+
+## 16. 2026-06-12 停止边界最后一批消息门禁追加
+
+| P0 模块 | 自动化脚本 | 覆盖结论 | 仍需人工 |
+| --- | --- | --- | --- |
+| 停止前 pending 队列不丢 | `regression-collector-stop-drains-pending.mjs` | DOM 新增最后一条评论后立即 stop，cleanup 必须先 scan + flush，事件进入 batch | 安装包手工停止/关播自动停止观察 |
+| 真实 smoke 进场/礼物分类准确 | `regression-real-room-smoke-visible-message-probe.mjs` | `来了` 优先归为 entry，`xN` 只有独立 token 才归为 gift，避免用户名误报 | 后续真实样本继续观察 |
+| 真实直播间 stop 边界复测 | `smoke-real-room-message-integrity.mjs` | `127874409138` 300 秒：raw events 268、raw comments 90、persisted comments 18、entries 126、四类 observer unmatched 均为 0 | 用户最终安装版验收 |
+| 总回归门禁 | `npm run test:regression` | PASS：server 32、web 16、desktop 6 | 用户最终安装版验收 |
+| 安全审计门禁 | `npm run audit:security` | PASS：high=0；保留 `exceljs -> uuid` moderate | 无 |
+| 打包门禁 | `node apps/desktop/scripts/regression-release-version.cjs`、`npm run desktop:pack:fast` | PASS：`糖三角-V26.6.12.1-安装包.exe`，SHA256 `3AE6D269F9A90BEB52585649C131C7E47A9D822A7D16D294555FDFCA3B71CEEB` | 安装后启动和真实业务手工验收 |

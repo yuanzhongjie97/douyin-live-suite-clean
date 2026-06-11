@@ -809,3 +809,62 @@ Real-room smoke evidence:
 Conclusion:
 - The two concrete real-room loss modes found after `V26.6.11.6` are mitigated at source level and covered by regression scripts.
 - This pass was not packaged and did not change the release version. Installed-app acceptance remains with the user after the next package is produced.
+
+## 26. 2026-06-12 Stop Boundary Pending Drain Retest
+
+Purpose:
+- Continue the P0 real-room message-loss investigation after the split-comment fix.
+- Verify that messages visible immediately before stopping collection are flushed from the browser page into the service before page cleanup.
+
+Root cause found:
+- A 5-minute real-room smoke exposed unmatched visible entry rows near the stop boundary.
+- Code review confirmed the old cleanup path cancelled `flushTimer` and then executed `pending.length = 0`, so a newly observed event could be discarded if stop happened before the delayed flush ran.
+
+Fix summary:
+- `collector.stop()` now awaits the page cleanup function.
+- The page cleanup function performs one final `bootstrapScan()`, `scanVisibleLeafComments()`, and `await flush()` before disconnecting observers and clearing timers.
+- The real-room smoke classifier now treats `来了/进入直播间` as entry before gift detection, and requires gift `xN` to be an isolated token.
+
+Command results:
+
+| Command | Result |
+| --- | --- |
+| `node --import tsx apps/server/scripts/regression-collector-stop-drains-pending.mjs` | RED before fix, PASS after fix |
+| `node --import tsx apps/server/scripts/regression-real-room-smoke-visible-message-probe.mjs` | PASS |
+| `npm run test:server` | PASS: 32 scripts |
+| `npm run test:regression` | PASS: server 32, web 16, desktop 6 |
+| `npm run audit:security` | PASS: high=0; remaining `exceljs -> uuid` 2 moderate |
+| `node apps/desktop/scripts/regression-release-version.cjs` | PASS: `V26.6.12.1` / `26.6.12-1` |
+| `npm run desktop:pack:fast` | PASS: packaged native ABI gate passed |
+
+Real-room smoke evidence:
+
+| Item | Value |
+| --- | --- |
+| Room | `https://live.douyin.com/127874409138` |
+| Duration | 300 seconds |
+| Raw events | 268 |
+| Raw comments | 90 |
+| Persisted events | 144 |
+| Persisted comments | 18 |
+| Persisted entries | 126 |
+| Comment ledger | raw 90, deduped 72, DB inserted 18, bus published 18 |
+| Node visible comment observer | `unmatchedCount=0` |
+| In-page comment probe | `unmatchedCount=0` |
+| Node visible message probe | `unmatchedCount=0` |
+| In-page message probe | `unmatchedCount=0` |
+| Unmatched visible messages | `[]` |
+| SourceId suspicious groups | `[]` |
+
+Conclusion:
+- The stop-boundary pending discard risk is fixed at source level and covered by regression.
+- This pass is packaged as `V26.6.12.1`. Installed-app acceptance remains with the user.
+
+Release artifact:
+
+| Item | Value |
+| --- | --- |
+| Version | `V26.6.12.1` / `26.6.12-1` |
+| Installer | `C:\Users\85855\PycharmProjects\PythonProject\douyin-live-suite-clean\apps\desktop\release\糖三角-V26.6.12.1-安装包.exe` |
+| Size | `85,329,128` bytes |
+| SHA256 | `3AE6D269F9A90BEB52585649C131C7E47A9D822A7D16D294555FDFCA3B71CEEB` |

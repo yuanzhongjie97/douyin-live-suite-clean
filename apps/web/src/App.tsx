@@ -129,6 +129,15 @@ const FONT_SIZE_OPTIONS: Array<{ id: MessageFontSize; label: string }> = [
 
 const VERSION_LOGS = [
   {
+    version: 'V26.6.12.1',
+    date: '2026-06-12',
+    items: [
+      '修复停止采集边界最后一批消息可能丢失的问题，停止清理前会先执行最后一次扫描并 flush 浏览器 pending 队列。',
+      '修正真实直播间 smoke 诊断分类：进场消息优先于礼物识别，用户名内的 x5 不再误判为礼物倍数。',
+      '真实直播间 127874409138 已执行 5 分钟 smoke：raw events 268、raw 评论 90、入库评论 18、四类可见探针 unmatchedCount 为 0。',
+    ],
+  },
+  {
     version: 'V26.6.11.6',
     date: '2026-06-11',
     items: [

@@ -52,10 +52,10 @@ const parseVisibleMessageText = (rawText) => {
     };
   }
   let category = 'unknown';
-  if (/(?:送出|赠送|送给|打赏|投喂|送礼|礼物|粉丝团|灯牌|入团券|人气票|小心心|玫瑰|x\s*\d{1,5}|×\s*\d{1,5})/u.test(text)) {
-    category = 'gift';
-  } else if (/(?:进入直播间|来了|进入了直播间|加入直播)/u.test(text)) {
+  if (/(?:进入直播间|来了|进入了直播间|加入直播)/u.test(text)) {
     category = 'entry';
+  } else if (/(?:送出|赠送|送给|打赏|投喂|送礼|礼物|粉丝团|灯牌|入团券|人气票|小心心|玫瑰|(?:^|\s)[x×]\s*\d{1,5}(?:\s|$))/u.test(text)) {
+    category = 'gift';
   } else if (/(?:点赞|关注|分享|推荐了直播|为主播加了\s*\d+\s*分)/u.test(text)) {
     category = 'interaction';
   }

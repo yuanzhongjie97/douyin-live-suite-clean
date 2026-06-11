@@ -859,3 +859,40 @@ node apps\desktop\scripts\run-regressions.cjs
 | `npm run test:regression` | PASS：server 31、web 16、desktop 6 |
 | `npm run audit:security` | PASS：high=0；保留 `exceljs -> uuid` 2 个 moderate |
 | 180 秒真实 smoke | PASS：raw comments 21、persisted comments 7、deduped 14、四类 visible/page observer `unmatchedCount=0` |
+
+## 2026-06-12 追加测试 SOP：停止边界最后一批消息不丢
+
+### TC-CAP-020_停止采集前必须drain浏览器pending队列
+- Priority: P0
+- Requirement: 用户点击停止、关播自动停止或真实 smoke 到时停止时，浏览器页内已经观察到但还没触发延迟 flush 的最后一批事件不得被 cleanup 清空。
+- Steps:
+  1. 执行 `node --import tsx apps/server/scripts/regression-collector-stop-drains-pending.mjs`。
+  2. 测试在 DOM 中追加一条评论后立即调用 `collector.stop()`。
+- Expected Results:
+  1. `collector.stop()` 会等待页面 cleanup。
+  2. cleanup 先执行最后一次扫描和 `await flush()`。
+  3. 追加的最后一条评论进入 `__douyinCollectorBatch`，不能出现 `events=[]`。
+
+### TC-CAP-021_真实Smoke进场消息不得被礼物误报
+- Priority: P0
+- Requirement: 真实 smoke 的诊断分类不能把用户名中包含 `x5` 等字符的 `来了` 进场消息误判成礼物。
+- Steps:
+  1. 执行 `node --import tsx apps/server/scripts/regression-real-room-smoke-visible-message-probe.mjs`。
+  2. 检查 `parseVisibleMessageText()` 中 entry 分类优先于 gift 分类，且 gift `xN` 匹配要求独立 token。
+- Expected Results:
+  1. `dy98y8xx5j 来了` 这类文本应归类为 `entry`。
+  2. `x5` 只有作为独立倍数 token 时才进入 gift 诊断。
+
+### 2026-06-12 执行记录：停止边界
+
+| 项 | 结果 |
+| --- | --- |
+| `node --import tsx apps/server/scripts/regression-collector-stop-drains-pending.mjs` | 修复前 RED，修复后 PASS |
+| `node --import tsx apps/server/scripts/regression-real-room-smoke-visible-message-probe.mjs` | PASS |
+| `npm run test:server` | PASS：32 scripts |
+| `npm run test:regression` | PASS：server 32、web 16、desktop 6 |
+| `npm run audit:security` | PASS：high=0；保留 `exceljs -> uuid` 2 个 moderate |
+| `node apps/desktop/scripts/regression-release-version.cjs` | PASS：`V26.6.12.1` / `26.6.12-1` |
+| `npm run desktop:pack:fast` | PASS：生成 `糖三角-V26.6.12.1-安装包.exe`，packaged native ABI 门禁通过 |
+| 安装包 SHA256 | `3AE6D269F9A90BEB52585649C131C7E47A9D822A7D16D294555FDFCA3B71CEEB` |
+| 300 秒真实 smoke | PASS：raw events 268、raw comments 90、persisted comments 18、entries 126、四类 visible/page observer `unmatchedCount=0` |

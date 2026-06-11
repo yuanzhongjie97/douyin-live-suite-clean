@@ -188,9 +188,9 @@ export class DouyinCollector {
         }
         try {
             if (this.page && !this.page.isClosed()) {
-                await this.page.evaluate(() => {
+                await this.page.evaluate(async () => {
                     const windowAny = window;
-                    windowAny.__douyinCollectorCleanup?.();
+                    await windowAny.__douyinCollectorCleanup?.();
                 });
             }
         }
@@ -2814,7 +2814,15 @@ export class DouyinCollector {
                 scanVisibleLeafComments();
             }, 250));
             cleanupHandles.push(window.setInterval(cleanupSeen, 5000));
-            windowAny.__douyinCollectorCleanup = () => {
+            windowAny.__douyinCollectorCleanup = async () => {
+                try {
+                    bootstrapScan();
+                    scanVisibleLeafComments();
+                    await flush();
+                }
+                catch {
+                    // Cleanup must continue even if the page is already unstable.
+                }
                 observers.forEach((observer) => observer?.disconnect());
                 cleanupHandles.forEach((handle) => window.clearInterval(handle));
                 messageCleanupHandles.forEach((dispose) => {

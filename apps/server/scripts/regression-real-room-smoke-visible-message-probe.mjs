@@ -30,4 +30,16 @@ assert.match(
   'real-room smoke must retain unknown visible rows for manual triage when user reports message loss',
 );
 
+assert.match(
+  smokeSource,
+  /进入直播间\|来了[\s\S]*category = 'entry'[\s\S]*送出/u,
+  'real-room smoke must classify entry messages before gift text so usernames like dy98y8xx5j are not treated as gifts',
+);
+
+assert.match(
+  smokeSource,
+  /\(\?:\^\|\\s\)\[x×\]\\s\*\\d\{1,5\}\(\?:\\s\|\$\)/u,
+  'gift multiplier detection must require an isolated xN token instead of matching x5 inside a username',
+);
+
 console.log('real-room smoke visible message probe regression checks passed');

@@ -818,3 +818,35 @@ Release note:
 - Long-running installed-app acceptance is still needed after the next package is produced.
 - Real-room smoke remains sampled validation and may expose new Douyin DOM variants later.
 - Existing non-P0 risks remain unchanged: `collector.ts @ts-nocheck`, large-file coupling, export buffer memory profile, no code signing, no CI/coverage gate, no external API support.
+
+## 2026-06-12 Stop Boundary Pending Drain Risk Closure
+
+### Status
+
+- A P0 stop-boundary message-loss risk is mitigated at source level.
+- This entry records source and test closure only. It is not a packaged release record.
+- Product boundaries are unchanged: 50,000 raw detail events per session, UI recent window only, no full-history UI, no nickname fallback for special-follow matching.
+
+### Newly Mitigated Risks
+
+| Risk | Trigger | Impact | Mitigation |
+| --- | --- | --- | --- |
+| Pending browser events are discarded on stop | A live message is observed shortly before manual stop, auto-stop, or smoke timeout; delayed flush has not run yet | The message can be visible in the browser but absent from raw collector events, DB, SSE and export | Stop cleanup now runs one final scan and `await flush()` before disconnecting observers, clearing timers and emptying pending state |
+| Real smoke misclassifies entry as gift | A username contains `x5` or similar text and the row says `来了` | Diagnostics report a false unmatched gift, hiding the real category | Smoke classifier now evaluates entry before gift and requires gift `xN` to be an isolated token |
+
+### Evidence
+
+| Check | Result |
+| --- | --- |
+| `node --import tsx apps/server/scripts/regression-collector-stop-drains-pending.mjs` | RED before fix, PASS after fix |
+| `node --import tsx apps/server/scripts/regression-real-room-smoke-visible-message-probe.mjs` | PASS |
+| `npm run test:server` | PASS: 32 scripts |
+| `npm run test:regression` | PASS: server 32, web 16, desktop 6 |
+| `npm run audit:security` | PASS: high=0; existing `exceljs -> uuid` moderate remains |
+| 300s real-room smoke | PASS: raw events 268, raw comments 90, persisted comments 18, entries 126, all visible/page comment and message unmatched counts are 0 |
+
+### Remaining Risks
+
+- The current evidence covers sampled real-room traffic and mock stop-boundary behavior; user installed-app acceptance remains required after packaging.
+- Real-room smoke can still reveal new Douyin DOM variants later.
+- Existing non-P0 risks remain unchanged: `collector.ts @ts-nocheck`, large-file coupling, export buffer memory profile, no code signing, no CI/coverage gate, no external API support.
