@@ -334,3 +334,11 @@
 - 验证：`npm run test:regression` 通过 server 26、web 14、desktop 6；`npm run audit:security` high=0，保留 `exceljs -> uuid` moderate；`npm run desktop:pack:fast` 通过并执行 packaged native ABI 门禁。
 - 打包：版本升为 `V26.6.11.3` / `26.6.11-3`；安装包 `C:\Users\85855\PycharmProjects\PythonProject\douyin-live-suite-clean\apps\desktop\release\糖三角-V26.6.11.3-安装包.exe`，大小 `85,328,637` bytes，SHA256 `D76B5A9D02C5F38BE3FDB6720CAC20D686AE246809FCBBFC748E33B31B5AB56B`。
 - 边界：仍不改变采集入口、SQLite 表结构、统计/导出口径、每会话原始明细 50000 条上限、UI 近期展示窗口和特别关注展示口径；安装后最终人工验收仍由用户拍板。
+
+### 63 V26.6.11.4 真实 smoke 可见行对照与停止竞态修复
+- 内容：真实直播间 smoke 的外部 DOM 对照改为只读取叶子级消息行，并拒绝包含多条 `：` 分隔符的拼接容器文本，避免把整块聊天容器误判成一条未匹配评论。
+- 内容：修复停止采集时 heartbeat 与页面关闭之间的竞态；`Target page/context/browser has been closed` 这类正常停止期间的 closed-target 错误不再导致进程崩溃或误报 fatal。
+- 原因：60 秒真实 smoke 暴露出 stop 后 heartbeat 仍可能进入 `installObserver()` 并抛出 closed-target 异常；同时旧外部观察者会产生拼接伪评论，削弱真实 smoke 证据质量。
+- 验证：`npm run test:regression` 通过 server 28、web 14、desktop 6；`npm run audit:security` high=0，保留 `exceljs -> uuid` moderate；真实直播间 `https://live.douyin.com/127874409138` 180 秒 smoke 通过，raw comments 39、persisted comments 13、deduped 26、`suspiciousRawCommentGroups=[]`、`visibleCommentObserver.unmatchedCount=0`。
+- 打包：版本升为 `V26.6.11.4` / `26.6.11-4`；安装包 `C:\Users\85855\PycharmProjects\PythonProject\douyin-live-suite-clean\apps\desktop\release\糖三角-V26.6.11.4-安装包.exe`，大小 `85,328,389` bytes，SHA256 `9AD1EFEB9C8ACC9B616268860382A273232E791D6C71500619F5DDA9C80B89C6`。
+- 边界：仍不改变业务功能、采集入口、SQLite 表结构、统计/导出口径、每会话原始明细 50000 条上限、UI 近期窗口和特别关注展示口径；安装后最终人工验收仍由用户拍板。

@@ -599,3 +599,54 @@ Release artifact:
 Conclusion:
 - The newly identified stale React payload risk is mitigated and covered by regression tests.
 - Final real-room manual acceptance remains with the user.
+
+## 22. V26.6.11.4 Real-Room Smoke Observer and Stop-Race Retest
+
+Purpose:
+- Strengthen real-room smoke evidence by comparing collector/DB/SSE output against leaf-level visible DOM rows.
+- Fix the stop/heartbeat race that could crash real-room smoke with `Target page, context or browser has been closed`.
+
+Fix summary:
+- The smoke observer now reads only leaf-level message rows and rejects concatenated container text with multiple `:` / `：` separators.
+- Collector heartbeat exits while stopping/not running and catches closed-target races around `installObserver`.
+- Closed-target errors during normal stop no longer become fatal errors.
+
+Command results:
+
+| Command | Result |
+| --- | --- |
+| `node --import tsx apps/server/scripts/regression-real-room-smoke-visible-observer.mjs` | PASS |
+| `node --import tsx apps/server/scripts/regression-collector-heartbeat-stop-race.mjs` | PASS |
+| `npm run test:regression` | PASS: server 28, web 14, desktop 6 |
+| `npm run audit:security` | PASS: high=0; remaining `exceljs -> uuid` 2 moderate |
+| `node apps/server/scripts/smoke-real-room-message-integrity.mjs https://live.douyin.com/127874409138` | PASS: 180s real-room smoke |
+| `npm run desktop:pack:fast` | PASS; packaged native ABI gate passed |
+
+Real-room smoke result:
+
+| Item | Value |
+| --- | --- |
+| Room | `https://live.douyin.com/127874409138` |
+| Duration | 180 seconds |
+| Raw events | 173 |
+| Raw comments | 39 |
+| Persisted events | 122 |
+| Persisted comments | 13 |
+| Entries / interactions / gifts | 103 / 6 / 0 |
+| Comment ledger | raw 39, deduped 26, DB inserted 13, bus published 13 |
+| SourceId duplicate groups | all duplicate groups had `variantCount=1` |
+| Visible DOM observer | uniqueComments 11, `unmatchedCount=0` |
+| Interpretation | Collector, DB, SSE, ledger, and leaf-level visible DOM observer were consistent in this smoke. No evidence of distinct real comments being dropped. |
+
+Release artifact:
+
+| Item | Value |
+| --- | --- |
+| Version | `V26.6.11.4` / `26.6.11-4` |
+| Installer | `C:\Users\85855\PycharmProjects\PythonProject\douyin-live-suite-clean\apps\desktop\release\糖三角-V26.6.11.4-安装包.exe` |
+| Size | `85,328,389` bytes |
+| SHA256 | `9AD1EFEB9C8ACC9B616268860382A273232E791D6C71500619F5DDA9C80B89C6` |
+
+Conclusion:
+- The real-room smoke harness now provides stronger evidence and no longer crashes during normal stop.
+- Final installation/manual acceptance remains with the user.

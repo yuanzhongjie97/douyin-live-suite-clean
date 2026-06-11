@@ -358,3 +358,11 @@
 - 新增边界：同一 `sourceId` 只有在用户、正文、原始文本一致时才可视为同一真实消息的重复扫描；若用户或正文不同，必须作为不同真实消息保留。
 - `V26.6.11.3` 已对 `https://live.douyin.com/127874409138` 做 180 秒真实 smoke：raw comments 27、persisted comments 9、deduped 18、DB/SSE/ledger 一致；所有同 `sourceId` 重复组 `variantCount=1`。
 - 本次仍不改变直播 URL allowlist、采集启动/停止流程、SQLite 表结构、统计/导出口径、每会话 50000 条原始明细上限、UI 近期窗口和特别关注展示口径。
+
+## 19. 2026-06-11 V26.6.11.4 真实 Smoke 对照与停止竞态边界
+
+- 新增边界：真实直播间 smoke 的外部可见行对照只能读取叶子级消息行，不得把整块聊天容器拼接文本当成一条评论。
+- 新增边界：外部可见行对照中包含多条 `：` 分隔的拼接文本应视为容器噪音，不作为未匹配评论证据。
+- 新增边界：停止采集期间 heartbeat、刷新观察器和页面关闭可能并发发生；正常停止中的 closed-target 错误应被容忍，不得导致进程崩溃或误报 fatal。
+- `V26.6.11.4` 已对 `https://live.douyin.com/127874409138` 做 180 秒真实 smoke：raw comments 39、persisted comments 13、deduped 26，`suspiciousRawCommentGroups=[]`，`visibleCommentObserver.unmatchedCount=0`。
+- 本次仍不改变业务功能、采集入口、SQLite 表结构、统计/导出口径、每会话 50000 条原始明细上限、UI 近期窗口和特别关注展示口径。

@@ -701,3 +701,39 @@ node apps\desktop\scripts\run-regressions.cjs
 是否允许发布：
 风险接受人：
 ```
+## V26.6.11.4 追加测试 SOP：真实 Smoke 可见行对照与停止竞态
+
+### TC-CAP-013_真实Smoke只对照叶子级可见评论
+- Priority: P0
+- Requirement: 真实直播间 smoke 的外部 DOM 对照不得把包含多条消息的聊天容器误判为一条未匹配评论。
+- Steps:
+  1. 执行 `node apps/server/scripts/smoke-real-room-message-integrity.mjs https://live.douyin.com/127874409138`。
+  2. 检查 `visibleCommentObserver`、`rawCommentDuplicateGroups` 和 `suspiciousRawCommentGroups`。
+- Expected Results:
+  1. 外部观察器只读取叶子级可见消息行。
+  2. 多条 `：` 拼接的容器文本不进入未匹配评论集合。
+  3. `visibleCommentObserver.unmatchedCount` 为 0 或能给出明确的真实可见未匹配样本。
+
+### TC-CAP-014_停止采集Heartbeat关闭竞态不崩溃
+- Priority: P0
+- Requirement: 停止采集时 heartbeat 与页面关闭并发发生，closed-target 错误不得导致进程崩溃或误报 fatal。
+- Steps:
+  1. 执行 `node --import tsx apps/server/scripts/regression-collector-heartbeat-stop-race.mjs`。
+  2. 在真实 smoke 完成后观察停止阶段日志。
+- Expected Results:
+  1. `page.evaluate: Target page, context or browser has been closed` 在正常停止期间被容忍。
+  2. 停止后不再继续安装 observer。
+  3. smoke 进程正常退出。
+
+### V26.6.11.4 执行记录
+
+| 项 | 结果 |
+| --- | --- |
+| `node --import tsx apps/server/scripts/regression-real-room-smoke-visible-observer.mjs` | PASS |
+| `node --import tsx apps/server/scripts/regression-collector-heartbeat-stop-race.mjs` | PASS |
+| `npm run build:server` | PASS |
+| `npm run test:regression` | PASS：server 28、web 14、desktop 6 |
+| `npm run audit:security` | PASS：high=0；保留 `exceljs -> uuid` moderate |
+| `node apps/server/scripts/smoke-real-room-message-integrity.mjs https://live.douyin.com/127874409138` | PASS：180 秒真实 smoke，raw comments 39、persisted comments 13、deduped 26，`suspiciousRawCommentGroups=[]`，`visibleCommentObserver.unmatchedCount=0` |
+| `npm run desktop:pack:fast` | PASS：生成 `糖三角-V26.6.11.4-安装包.exe`，packaged native ABI 门禁通过 |
+| 安装包 SHA256 | `9AD1EFEB9C8ACC9B616268860382A273232E791D6C71500619F5DDA9C80B89C6` |

@@ -16,6 +16,10 @@ const makeCommentSignature = (userName, text) =>
   `${normalizeSignatureText(userName)}|${normalizeSignatureText(text)}`;
 const parseVisibleCommentText = (rawText) => {
   const text = normalize(rawText);
+  const colonCount = (text.match(/[:：]/gu) ?? []).length;
+  if (colonCount !== 1) {
+    return undefined;
+  }
   const matched = text.match(/^(.{1,28}?)[\s]*[:：][\s]*(.{1,120})$/u);
   if (!matched) {
     return undefined;
@@ -182,20 +186,37 @@ try {
     }
     const visibleRows = await page
       .evaluate(() => {
-        const selectors = [
-          '[data-e2e*="chat"]',
-          '[data-e2e*="comment"]',
-          '[class*="chat"]',
-          '[class*="Chat"]',
-          '[class*="comment"]',
-          '[class*="Comment"]',
-          '[class*="message"]',
-          '[class*="Message"]',
-          'li',
+        const visibleLeafSelectors = [
+          '.webcast-chatroom___item',
           '[role="listitem"]',
+          '[data-e2e*="comment-item"]',
+          '[data-e2e*="chat-item"]',
+          '[class*="chatroom___item"]',
+          '[class*="ChatroomItem"]',
+          '[class*="commentItem"]',
+          '[class*="CommentItem"]',
+          '[class*="messageItem"]',
+          '[class*="MessageItem"]',
         ].join(',');
-        return Array.from(document.querySelectorAll(selectors))
-          .slice(-160)
+        return Array.from(document.querySelectorAll(visibleLeafSelectors))
+          .filter((node) => {
+            if (!(node instanceof HTMLElement)) {
+              return false;
+            }
+            const hasNestedVisibleLeaf = Array.from(node.querySelectorAll(visibleLeafSelectors)).some((child) => {
+              if (child === node || !(child instanceof HTMLElement)) {
+                return false;
+              }
+              const rect = child.getBoundingClientRect();
+              return rect.width > 0 && rect.height > 0;
+            });
+            if (hasNestedVisibleLeaf) {
+              return false;
+            }
+            const rect = node.getBoundingClientRect();
+            return rect.width > 0 && rect.height > 0;
+          })
+          .slice(-120)
           .map((node) => {
             const element = node;
             return String(element?.innerText || element?.textContent || '').replace(/\s+/gu, ' ').trim();

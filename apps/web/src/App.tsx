@@ -129,6 +129,15 @@ const FONT_SIZE_OPTIONS: Array<{ id: MessageFontSize; label: string }> = [
 
 const VERSION_LOGS = [
   {
+    version: 'V26.6.11.4',
+    date: '2026-06-11',
+    items: [
+      '增强真实直播间 smoke 外部可见行对照：只采集叶子级消息行，并过滤多条评论拼接文本，避免误判容器文本。',
+      '修复停止采集时 heartbeat 与页面关闭竞态导致的 Target closed 崩溃，正常停止不再触发 fatal 或中断测试。',
+      '真实直播间 127874409138 已执行 180 秒 smoke：外部可见评论 unmatchedCount 为 0，DB/SSE/ledger 一致。',
+    ],
+  },
+  {
     version: 'V26.6.11.3',
     date: '2026-06-11',
     items: [

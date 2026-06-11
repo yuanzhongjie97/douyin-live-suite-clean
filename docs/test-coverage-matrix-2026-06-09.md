@@ -126,3 +126,14 @@
 | 真实直播间 sourceId 变体检查 | `smoke-real-room-message-integrity.mjs` | `127874409138` 180 秒：raw comments 27、persisted comments 9、deduped 18，所有同 `sourceId` 重复组 `variantCount=1` | 安装后用户最终验收 |
 | 最新总回归门禁 | `npm run test:regression` | PASS：server 26、web 14、desktop 6 | 新发包前继续重跑 |
 | 最新安全门禁 | `npm run audit:security` | PASS：high=0；保留 `exceljs -> uuid` moderate | 无 |
+
+## 12. 2026-06-11 V26.6.11.4 真实 Smoke 对照与停止竞态门禁追加
+
+| P0 模块 | 自动化脚本 | 覆盖结论 | 仍需人工 |
+| --- | --- | --- | --- |
+| 真实 smoke 可见行对照 | `regression-real-room-smoke-visible-observer.mjs`、`smoke-real-room-message-integrity.mjs` | 外部观察器只读取叶子级可见消息行；容器拼接文本不再作为伪未匹配评论 | 安装后用户按真实直播间继续观察 |
+| 停止采集关闭竞态 | `regression-collector-heartbeat-stop-race.mjs` | 正常停止期间 closed-target 错误被容忍；heartbeat 不再在停止后继续安装 observer | 长时采集后手动停止观察 |
+| 真实直播间 smoke | `smoke-real-room-message-integrity.mjs` | `127874409138` 180 秒：raw comments 39、persisted comments 13、deduped 26，`suspiciousRawCommentGroups=[]`，`visibleCommentObserver.unmatchedCount=0` | 用户最终验收 |
+| 最新总回归门禁 | `npm run test:regression` | PASS：server 28、web 14、desktop 6 | 新发包前继续重跑 |
+| 最新安全门禁 | `npm run audit:security` | PASS：high=0；保留 `exceljs -> uuid` moderate | 无 |
+| 打包门禁 | `npm run desktop:pack:fast` | PASS：`糖三角-V26.6.11.4-安装包.exe`，SHA256 `9AD1EFEB9C8ACC9B616268860382A273232E791D6C71500619F5DDA9C80B89C6` | 安装后启动与真实业务手工验收 |

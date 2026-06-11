@@ -16,6 +16,10 @@ const REACT_DATA_CACHE_TTL_MS = 120;
 const routedContexts = new WeakSet();
 const boundContexts = new WeakSet();
 const batchHandlers = new WeakMap();
+const isClosedTargetError = (error) => {
+    const message = String(error?.message ?? error ?? '');
+    return /(?:Target page, context or browser has been closed|Protocol error|Session closed|Target closed|Browser has been closed|Page closed)/iu.test(message);
+};
 export class DouyinCollector {
     url;
     profileDir;
@@ -207,13 +211,24 @@ export class DouyinCollector {
         }
     }
     async heartbeat() {
+        if (this.stopping || !this.running) {
+            return;
+        }
         if (!this.page || this.page.isClosed()) {
             await this.notifyFatal(new Error('collector browser unavailable'));
             return;
         }
-        await this.refreshRoomSnapshot();
-        await this.keepPlaybackAlive();
-        await this.installObserver();
+        try {
+            await this.refreshRoomSnapshot();
+            await this.keepPlaybackAlive();
+            await this.installObserver();
+        }
+        catch (error) {
+            if (isClosedTargetError(error) && (this.stopping || !this.running || !this.page || this.page.isClosed())) {
+                return;
+            }
+            await this.notifyFatal(error instanceof Error ? error : new Error(String(error)));
+        }
     }
     async restartCollectorPage(reason = 'manual') {
         if (!this.context || this.stopping || this.restartingPage) {
@@ -455,7 +470,8 @@ export class DouyinCollector {
         if (!this.page || this.page.isClosed()) {
             return;
         }
-        await this.page.evaluate(({ giftKeywords, flushDelayMs, flushImmediateThreshold, reactDataCacheTtlMs }) => {
+        try {
+            await this.page.evaluate(({ giftKeywords, flushDelayMs, flushImmediateThreshold, reactDataCacheTtlMs }) => {
             const windowAny = window;
             if (windowAny.__douyinCollectorInstalled) {
                 return;
@@ -2729,12 +2745,19 @@ export class DouyinCollector {
                 windowAny.__douyinCollectorInstalled = false;
                 delete windowAny.__douyinCollectorCleanup;
             };
-        }, {
-            giftKeywords: GIFT_KEYWORDS,
-            flushDelayMs: BATCH_FLUSH_DELAY_MS,
-            flushImmediateThreshold: BATCH_FLUSH_IMMEDIATE_THRESHOLD,
-            reactDataCacheTtlMs: REACT_DATA_CACHE_TTL_MS,
-        });
+            }, {
+                giftKeywords: GIFT_KEYWORDS,
+                flushDelayMs: BATCH_FLUSH_DELAY_MS,
+                flushImmediateThreshold: BATCH_FLUSH_IMMEDIATE_THRESHOLD,
+                reactDataCacheTtlMs: REACT_DATA_CACHE_TTL_MS,
+            });
+        }
+        catch (error) {
+            if (isClosedTargetError(error) && (this.stopping || !this.running || !this.page || this.page.isClosed())) {
+                return;
+            }
+            throw error;
+        }
     }
     async notifyFatal(error) {
         if (this.fatalNotified) {

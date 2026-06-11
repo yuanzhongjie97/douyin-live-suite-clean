@@ -699,3 +699,31 @@ Release note:
 - Very long high-traffic real-room observation remains a smoke/discovery activity.
 - Existing non-P0 risks remain unchanged: `collector.ts @ts-nocheck`, large-file coupling, export buffer memory profile, no code signing, no CI/coverage gate, no external API support.
 - If the user still observes a missing visible comment or gift remark, preserve session ID, timestamp, screenshot, copied diagnostics, exact visible text/gift row, and highlight config before changing logic again.
+
+## 2026-06-11 V26.6.11.4 Smoke Observer and Stop-Race Risk Closure
+
+### Status
+
+- Additional P0 validation/stability risks are mitigated and packaged as `V26.6.11.4`.
+- Product boundaries are unchanged: recent UI window only, 50,000 raw detail events per session, no full-history UI, no code signing, no CI gate.
+
+### Newly Mitigated Risks
+
+| Risk | Trigger | Impact | Mitigation |
+| --- | --- | --- | --- |
+| Real-room smoke observer reports false unmatched comments | Broad DOM selectors read the entire chat container text, producing concatenated pseudo-comments | Smoke evidence becomes noisy and can hide the true cause | Observer now samples leaf message rows only and rejects text with multiple username/body separators |
+| Stop/heartbeat race crashes collector smoke | Stop closes the page/context while heartbeat is inside `installObserver()` | Smoke exits with `Target page, context or browser has been closed`, weakening validation and risking runtime fatal noise | Heartbeat exits while stopping/not running and closed-target errors during normal stop are tolerated |
+
+### Verification
+
+| Check | Result |
+| --- | --- |
+| `npm run test:regression` | PASS: server 28, web 14, desktop 6 |
+| `npm run audit:security` | PASS: high=0; existing `exceljs -> uuid` moderate remains |
+| Real-room smoke | PASS: 180s on `https://live.douyin.com/127874409138`; raw comments 39, persisted comments 13, deduped 26, `suspiciousRawCommentGroups=[]`, visible observer `unmatchedCount=0` |
+| `npm run desktop:pack:fast` | PASS; installer `糖三角-V26.6.11.4-安装包.exe`, SHA256 `9AD1EFEB9C8ACC9B616268860382A273232E791D6C71500619F5DDA9C80B89C6` |
+
+### Remaining Risks
+
+- Real-room smoke remains a sampled validation method; the user's long-running installed-app acceptance is still the final release decision.
+- Existing non-P0 risks remain unchanged: `collector.ts @ts-nocheck`, large-file coupling, export buffer memory profile, no code signing, no CI/coverage gate, no external API support.
