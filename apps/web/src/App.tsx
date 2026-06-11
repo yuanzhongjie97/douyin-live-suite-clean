@@ -129,6 +129,15 @@ const FONT_SIZE_OPTIONS: Array<{ id: MessageFontSize; label: string }> = [
 
 const VERSION_LOGS = [
   {
+    version: 'V26.6.11.6',
+    date: '2026-06-11',
+    items: [
+      '修复真实直播间可见叶子评论不在主聊天根节点下时可能漏采的问题，采集器新增叶子级可见评论兜底扫描。',
+      '新增真实复现回归：主 chat root 存在但评论行落在外部可见叶子节点时，必须采集入 raw/DB/SSE 链路。',
+      '真实直播间 127874409138 已执行 90 秒 smoke：raw 评论 42、入库评论 14、可见探针 unmatchedCount 为 0。',
+    ],
+  },
+  {
     version: 'V26.6.11.5',
     date: '2026-06-11',
     items: [

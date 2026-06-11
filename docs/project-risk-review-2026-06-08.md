@@ -757,3 +757,32 @@ Release note:
 
 - UI still intentionally shows only the latest 200 comments; database, export, statistics and diagnostics remain the authoritative full retained detail path.
 - Final installed-app acceptance remains with the user, especially during a busier room period where comments exceed the recent UI window quickly.
+
+## 2026-06-11 V26.6.11.6 Visible Leaf Comment Capture Risk Closure
+
+### Status
+
+- A P0 collector-side message-loss risk was reproduced with the real room and mitigated.
+- Product boundaries are unchanged: 50,000 raw detail events per session, UI recent window only, no full-history UI, no nickname fallback for special-follow matching.
+
+### Newly Mitigated Risk
+
+| Risk | Trigger | Impact | Mitigation |
+| --- | --- | --- | --- |
+| Visible leaf comment outside the primary chat root is missed | Douyin renders or moves a real visible comment row outside the selected chat root while another chat root still exists | The comment is visible to the user but absent from raw collector events, DB, SSE and export | Collector now runs a narrow full-page visible-leaf fallback scan every 250ms and on install; it scans only leaf-level message candidates and rejects parent containers with nested visible leaves |
+
+### Evidence
+
+| Check | Result |
+| --- | --- |
+| Failed real-room smoke before fix | 5m on `https://live.douyin.com/127874409138` found visible unmatched comments, including `中古表时间廊：@天真恋 我的发言和婷哥的分一样的，一惊一乍` |
+| `node --import tsx apps/server/scripts/regression-comment-visible-leaf-fallback.mjs` | RED before fix, PASS after fix |
+| `node apps/web/scripts/regression-comment-history-desc-order-ui.mjs` | PASS: actual React UI keeps newest 200 comments from 1000 DESC API rows |
+| `npm run test:regression` | PASS: server 29, web 16, desktop 6 |
+| 90s real-room smoke after fix | PASS: raw comments 42, persisted comments 14, deduped 28, `suspiciousRawCommentGroups=[]`, `visibleCommentObserver.unmatchedCount=0`, `pageProbe.unmatchedCount=0` |
+
+### Remaining Risks
+
+- The fallback scan increases diagnostic noise counters such as `collector.digest.empty_text` because it deliberately samples more visible candidates; this is acceptable while no伪评论 enters DB.
+- Real-room smoke remains sampled validation. Long-running installed-app acceptance is still needed for a busy room period.
+- Existing non-P0 risks remain unchanged: `collector.ts @ts-nocheck`, large-file coupling, export buffer memory profile, no code signing, no CI/coverage gate, no external API support.

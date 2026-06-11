@@ -26,6 +26,44 @@ npm run audit:security
 node --import tsx apps\server\scripts\pressure-export-100k.mjs
 ```
 
+## V26.6.11.6 追加测试 SOP：可见叶子评论兜底采集
+
+### TC-CAP-016_主ChatRoot外可见叶子评论不得漏采
+- Priority: P0
+- Requirement: 当页面已经存在主聊天根节点，但真实可见评论行落在主 root 外部的叶子级消息节点中时，采集器仍必须采集该评论。
+- Steps:
+  1. 执行 `node --import tsx apps/server/scripts/regression-comment-visible-leaf-fallback.mjs`。
+  2. 检查 mock 页面中外部 `data-e2e="comment-item"` 行是否进入采集 batch。
+- Expected Results:
+  1. 可见评论 `中古表时间廊：@天真恋 我的发言和婷哥的分一样的，一惊一乍` 被采集为 comment。
+  2. 采集正文保留完整 `@天真恋 我的发言和婷哥的分一样的，一惊一乍`。
+  3. 不依赖昵称兜底，不改变入库、导出和 UI 展示窗口口径。
+
+### TC-CAP-017_可见叶子兜底不得采集父容器伪评论
+- Priority: P0
+- Requirement: 全页面兜底扫描只能处理叶子级消息候选，不能把包含多个消息叶子的父容器拼接成一条伪评论。
+- Steps:
+  1. 执行 `node --import tsx apps/server/scripts/regression-real-room-smoke-visible-observer.mjs`。
+  2. 执行真实 smoke：`REAL_ROOM_SMOKE_MS=90000 node --import tsx apps/server/scripts/smoke-real-room-message-integrity.mjs https://live.douyin.com/127874409138`。
+- Expected Results:
+  1. `suspiciousRawCommentGroups=[]`。
+  2. `visibleCommentObserver.unmatchedCount=0`。
+  3. `pageProbe.unmatchedCount=0`。
+  4. 如 unmatched 不为 0，必须保留 exact text、sessionId、时间点和复制诊断进入下一轮定位。
+
+### V26.6.11.6 执行记录
+
+| 项 | 结果 |
+| --- | --- |
+| `node --import tsx apps/server/scripts/regression-comment-visible-leaf-fallback.mjs` | PASS，修复前该用例 RED |
+| `node --import tsx apps/server/scripts/regression-comment-rich-mention-body.mjs` | PASS |
+| `node --import tsx apps/server/scripts/regression-real-room-smoke-visible-observer.mjs` | PASS |
+| `node apps/web/scripts/regression-comment-history-desc-order-ui.mjs` | PASS |
+| 90 秒真实 smoke | PASS：raw comments 42、persisted comments 14、deduped 28、`suspiciousRawCommentGroups=[]`、`visibleCommentObserver.unmatchedCount=0`、`pageProbe.unmatchedCount=0` |
+| `npm run test:regression` | PASS：server 29、web 16、desktop 6 |
+| `npm run audit:security` | PASS：high=0；保留 `exceljs -> uuid` 2 个 moderate |
+| `npm run desktop:pack:fast` | PASS：生成 `糖三角-V26.6.11.6-安装包.exe`，packaged native ABI 门禁通过 |
+
 ## 2026-06-10 P0 Capture Integrity Addendum
 
 ### TC-CAP-010 Gift name compact prefix

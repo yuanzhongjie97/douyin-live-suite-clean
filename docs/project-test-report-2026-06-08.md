@@ -711,3 +711,60 @@ Release artifact:
 | Installer | `C:\Users\85855\PycharmProjects\PythonProject\douyin-live-suite-clean\apps\desktop\release\糖三角-V26.6.11.5-安装包.exe` |
 | Size | `85,329,047` bytes |
 | SHA256 | `A8746750CCE8FF323EDE15A4DD8C0801BD84091E3925AAE87C9943F04C1B3118` |
+
+## 24. V26.6.11.6 Visible Leaf Comment Capture Retest
+
+Purpose:
+- Continue investigating user-visible message loss on `https://live.douyin.com/127874409138`.
+- Verify that a real visible comment row outside the selected primary chat root is still captured.
+
+Root cause found:
+- A 5-minute real-room smoke before this fix found comments visible to both the Node observer and in-page probe, but absent from raw collector events and persisted DB rows.
+- A minimal reproduction showed that when a main chat root exists, a valid leaf-level visible comment outside that root can be missed by the collector's root-focused scan.
+
+Fix summary:
+- The collector now runs a narrow full-page visible-leaf fallback scan.
+- The fallback only scans leaf-level message candidates such as `comment-item`, `chat-item`, `listitem`, `commentItem`, and `messageItem`.
+- Parent containers with nested visible message leaves are rejected to avoid concatenated pseudo-comments.
+
+Command results:
+
+| Command | Result |
+| --- | --- |
+| `node --import tsx apps/server/scripts/regression-comment-visible-leaf-fallback.mjs` | PASS after reproducing RED before fix |
+| `node --import tsx apps/server/scripts/regression-comment-rich-mention-body.mjs` | PASS |
+| `node --import tsx apps/server/scripts/regression-real-room-smoke-visible-observer.mjs` | PASS |
+| `node apps/web/scripts/regression-comment-history-desc-order-ui.mjs` | PASS |
+| 90s real-room smoke | PASS: raw comments 42, persisted comments 14, deduped 28, `unmatchedCount=0` for both observers |
+| `npm run test:regression` | PASS: server 29, web 16, desktop 6 |
+| `npm run audit:security` | PASS: high=0; remaining `exceljs -> uuid` 2 moderate |
+| `npm run desktop:pack:fast` | PASS; packaged native ABI gate passed |
+
+Real-room smoke result:
+
+| Item | Value |
+| --- | --- |
+| Room | `https://live.douyin.com/127874409138` |
+| Duration | 90 seconds |
+| Raw events | 101 |
+| Raw comments | 42 |
+| Persisted events | 68 |
+| Persisted comments | 14 |
+| Entries / interactions / gifts | 53 / 1 / 0 |
+| Comment ledger | raw 42, deduped 28, DB inserted 14, bus published 14 |
+| SourceId suspicious groups | `[]` |
+| Node visible observer | uniqueComments 13, `unmatchedCount=0` |
+| In-page probe | uniqueComments 13, `unmatchedCount=0` |
+
+Conclusion:
+- This round found and fixed a collector-side visible-leaf scan gap.
+- Final installed-app acceptance remains with the user.
+
+Release artifact:
+
+| Item | Value |
+| --- | --- |
+| Version | `V26.6.11.6` / `26.6.11-6` |
+| Installer | `C:\Users\85855\PycharmProjects\PythonProject\douyin-live-suite-clean\apps\desktop\release\糖三角-V26.6.11.6-安装包.exe` |
+| Size | `85,328,840` bytes |
+| SHA256 | `A8E138B7F5E4266ECD6C4D0BCDCF66AAE0FFDD4AF5074A94A6ADB4E1FCBE96EE` |

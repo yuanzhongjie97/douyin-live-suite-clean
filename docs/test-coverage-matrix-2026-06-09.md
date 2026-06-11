@@ -4,6 +4,16 @@
 当前版本：`V26.6.9.2`  
 项目路径：`C:\Users\85855\PycharmProjects\PythonProject\douyin-live-suite-clean`
 
+## 14. 2026-06-11 V26.6.11.6 可见叶子评论兜底采集门禁追加
+
+| P0 模块 | 自动化脚本 | 覆盖结论 | 仍需人工 |
+| --- | --- | --- | --- |
+| 主 chat root 外可见评论不漏采 | `regression-comment-visible-leaf-fallback.mjs` | 页面存在主聊天根节点时，外部 `data-e2e="comment-item"` 叶子级可见评论仍会进入采集 batch | 用户安装包长时间真实观察 |
+| 兜底扫描不采父容器伪评论 | `regression-real-room-smoke-visible-observer.mjs`、`smoke-real-room-message-integrity.mjs` | 兜底扫描跳过含嵌套可见消息叶的父容器；真实 smoke 后 `suspiciousRawCommentGroups=[]`、两个 observer unmatched 均为 0 | 高峰直播间继续观察 |
+| UI 历史回填真实渲染 | `regression-comment-history-desc-order-ui.mjs` | 真实 React 页面从 1000 条倒序 API 评论中保留最新 200 条，不再只靠源码正则门禁 | 用户安装包观察 UI 近期窗口 |
+| 总回归门禁 | `npm run test:regression` | PASS：server 29、web 16、desktop 6 | 发包前继续重跑 |
+| 真实直播间 smoke | `smoke-real-room-message-integrity.mjs` | `127874409138` 90 秒：raw comments 42、persisted comments 14、deduped 28、`visibleCommentObserver.unmatchedCount=0`、`pageProbe.unmatchedCount=0` | 用户最终验收 |
+
 ## 1. 当前自动化入口
 
 | 命令 | 覆盖范围 | 当前状态 |

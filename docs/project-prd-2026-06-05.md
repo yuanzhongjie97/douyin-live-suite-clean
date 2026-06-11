@@ -373,3 +373,11 @@
 - 新增边界：真实 smoke 除 Node 侧 1 秒可见行轮询外，还必须安装页内 `MutationObserver + 250ms scan` 探针，记录短暂出现的叶子级可见评论并与 raw/DB/SSE 对照。
 - `V26.6.11.5` 已对 `https://live.douyin.com/127874409138` 做 5 分钟增强 smoke：raw comments 126、persisted comments 42、deduped 84，`suspiciousRawCommentGroups=[]`，`visibleCommentObserver.unmatchedCount=0`，`pageProbe.unmatchedCount=0`。
 - 本次修复 UI 历史回填近期窗口和真实 smoke 证据能力，不改变采集入口、SQLite 表结构、统计/导出口径、每会话 50000 条原始明细上限、UI 评论 200 条近期窗口和特别关注展示口径。
+
+## 21. 2026-06-11 V26.6.11.6 可见叶子评论兜底采集边界
+
+- 新增边界：抖音直播页存在主聊天根节点时，采集器仍必须兜底扫描全页面叶子级可见评论节点；真实可见评论不能因为落在主 chat root 外部而漏采。
+- 兜底扫描只允许处理叶子级消息候选，必须跳过包含嵌套可见消息叶子的父容器，避免把整块聊天容器拼接成伪评论。
+- 新增最小回归：主 chat root 存在但外部 `data-e2e="comment-item"` 可见评论行出现时，评论必须进入 raw/DB/SSE 采集链路。
+- `V26.6.11.6` 已对 `https://live.douyin.com/127874409138` 做 90 秒真实 smoke：raw comments 42、persisted comments 14、deduped 28，`suspiciousRawCommentGroups=[]`，`visibleCommentObserver.unmatchedCount=0`，`pageProbe.unmatchedCount=0`。
+- 本次不改变采集入口、SQLite 表结构、统计/导出口径、每会话 50000 条原始明细上限、UI 评论 200 条近期窗口和特别关注展示口径。

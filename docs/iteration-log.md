@@ -350,3 +350,11 @@
 - 验证：新增 `regression-comment-history-desc-order.mjs`；`npm run test:regression` 通过 server 28、web 15、desktop 6；`npm run audit:security` high=0，保留 `exceljs -> uuid` moderate；增强真实 smoke 在 `https://live.douyin.com/127874409138` 跑 5 分钟，raw comments 126、persisted comments 42、deduped 84、`suspiciousRawCommentGroups=[]`、`visibleCommentObserver.unmatchedCount=0`、`pageProbe.unmatchedCount=0`。
 - 打包：版本升为 `V26.6.11.5` / `26.6.11-5`；安装包 `C:\Users\85855\PycharmProjects\PythonProject\douyin-live-suite-clean\apps\desktop\release\糖三角-V26.6.11.5-安装包.exe`，大小 `85,329,047` bytes，SHA256 `A8746750CCE8FF323EDE15A4DD8C0801BD84091E3925AAE87C9943F04C1B3118`。
 - 边界：不改变采集入口、SQLite 表结构、统计/导出口径、每会话原始明细 50000 条上限、UI 评论 200 条近期窗口和特别关注展示口径。
+
+### 65 V26.6.11.6 可见叶子评论兜底采集修复
+- 内容：采集器新增全页面叶子级可见评论兜底扫描。即使页面存在主 `chatRoot`，只要真实评论行落在外部 `comment-item/chat-item/listitem/messageItem` 叶子节点中，也会进入采集解析。
+- 内容：兜底扫描拒绝包含嵌套可见消息叶子的父容器，只对叶子级候选执行 `digestElement`，避免把整块聊天容器拼成一条伪评论。
+- 原因：5 分钟真实 smoke 复现可见探针持续看到评论 `中古表时间廊：@天真恋 我的发言和婷哥的分一样的，一惊一乍`，但 raw collector/DB/SSE 没有对应记录；最小回归证明主 chat root 存在时，外部可见叶子评论会被旧扫描路径漏掉。
+- 验证：新增 `regression-comment-visible-leaf-fallback.mjs`，先红后绿；新增页面级 `regression-comment-history-desc-order-ui.mjs`；`npm run test:regression` 通过 server 29、web 16、desktop 6；90 秒真实 smoke 在 `https://live.douyin.com/127874409138` 通过，raw comments 42、persisted comments 14、deduped 28、`suspiciousRawCommentGroups=[]`、`visibleCommentObserver.unmatchedCount=0`、`pageProbe.unmatchedCount=0`。
+- 打包：版本升为 `V26.6.11.6` / `26.6.11-6`；安装包 `C:\Users\85855\PycharmProjects\PythonProject\douyin-live-suite-clean\apps\desktop\release\糖三角-V26.6.11.6-安装包.exe`，大小 `85,328,840` bytes，SHA256 `A8E138B7F5E4266ECD6C4D0BCDCF66AAE0FFDD4AF5074A94A6ADB4E1FCBE96EE`。
+- 边界：不改变采集入口、SQLite 表结构、统计/导出口径、每会话原始明细 50000 条上限、UI 评论 200 条近期窗口和特别关注展示口径。

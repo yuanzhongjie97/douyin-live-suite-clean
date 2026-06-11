@@ -592,6 +592,18 @@ export class DouyinCollector {
                 'li',
             ];
             const chatItemSelector = chatItemSelectors.join(',');
+            const visibleLeafSelector = [
+                '.webcast-chatroom___item',
+                '[role="listitem"]',
+                '[data-e2e*="comment-item"]',
+                '[data-e2e*="chat-item"]',
+                '[class*="chatroom___item"]',
+                '[class*="ChatroomItem"]',
+                '[class*="commentItem"]',
+                '[class*="CommentItem"]',
+                '[class*="messageItem"]',
+                '[class*="MessageItem"]',
+            ].join(',');
             const messageSelectors = [
                 '[class*="message"]',
                 '[class*="msg"]',
@@ -2709,7 +2721,31 @@ export class DouyinCollector {
                     }
                 }
             };
+            const scanVisibleLeafComments = () => {
+                const candidates = Array.from(document.querySelectorAll(visibleLeafSelector)).slice(-180);
+                for (const node of candidates) {
+                    if (!(node instanceof HTMLElement)) {
+                        continue;
+                    }
+                    const rect = node.getBoundingClientRect();
+                    if (rect.width <= 0 || rect.height <= 0) {
+                        continue;
+                    }
+                    const hasNestedVisibleLeaf = Array.from(node.querySelectorAll(visibleLeafSelector)).some((child) => {
+                        if (child === node || !(child instanceof HTMLElement)) {
+                            return false;
+                        }
+                        const childRect = child.getBoundingClientRect();
+                        return childRect.width > 0 && childRect.height > 0;
+                    });
+                    if (hasNestedVisibleLeaf) {
+                        continue;
+                    }
+                    digestElement(node, 'visible-leaf');
+                }
+            };
             bootstrapScan();
+            scanVisibleLeafComments();
             cleanupHandles.push(window.setInterval(ensureGiftMessageBridge, 2500));
             cleanupHandles.push(window.setInterval(bootstrapScan, 2500));
             cleanupHandles.push(window.setInterval(() => {
@@ -2722,6 +2758,7 @@ export class DouyinCollector {
                         }
                     }
                 }
+                scanVisibleLeafComments();
             }, 250));
             cleanupHandles.push(window.setInterval(cleanupSeen, 5000));
             windowAny.__douyinCollectorCleanup = () => {
