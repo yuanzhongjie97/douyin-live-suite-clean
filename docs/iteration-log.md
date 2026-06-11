@@ -342,3 +342,11 @@
 - 验证：`npm run test:regression` 通过 server 28、web 14、desktop 6；`npm run audit:security` high=0，保留 `exceljs -> uuid` moderate；真实直播间 `https://live.douyin.com/127874409138` 180 秒 smoke 通过，raw comments 39、persisted comments 13、deduped 26、`suspiciousRawCommentGroups=[]`、`visibleCommentObserver.unmatchedCount=0`。
 - 打包：版本升为 `V26.6.11.4` / `26.6.11-4`；安装包 `C:\Users\85855\PycharmProjects\PythonProject\douyin-live-suite-clean\apps\desktop\release\糖三角-V26.6.11.4-安装包.exe`，大小 `85,328,389` bytes，SHA256 `9AD1EFEB9C8ACC9B616268860382A273232E791D6C71500619F5DDA9C80B89C6`。
 - 边界：仍不改变业务功能、采集入口、SQLite 表结构、统计/导出口径、每会话原始明细 50000 条上限、UI 近期窗口和特别关注展示口径；安装后最终人工验收仍由用户拍板。
+
+### 64 V26.6.11.5 UI 近期回填与页内探针修复
+- 内容：修复前端历史回填倒序窗口问题。后端 `/api/events` 返回最近事件为倒序，旧逻辑在排序前先取数组尾部，超过 600 条评论时可能裁掉最新评论，导致 UI 看起来丢最近消息；现改为先按事件顺序排序，再应用近期窗口。
+- 内容：真实直播间 smoke 新增页内 `MutationObserver + 250ms scan` 可见评论探针，记录短暂出现的叶子级评论，并与 raw collector、DB、SSE 账本对照。
+- 原因：5 分钟真实 smoke 证明采集/DB/SSE 未复现不同真实评论丢失，但 UI 历史回填存在倒序截断风险，能解释安装版或 SSE 回填后用户看到最近评论缺失。
+- 验证：新增 `regression-comment-history-desc-order.mjs`；`npm run test:regression` 通过 server 28、web 15、desktop 6；`npm run audit:security` high=0，保留 `exceljs -> uuid` moderate；增强真实 smoke 在 `https://live.douyin.com/127874409138` 跑 5 分钟，raw comments 126、persisted comments 42、deduped 84、`suspiciousRawCommentGroups=[]`、`visibleCommentObserver.unmatchedCount=0`、`pageProbe.unmatchedCount=0`。
+- 打包：版本升为 `V26.6.11.5` / `26.6.11-5`；安装包 `C:\Users\85855\PycharmProjects\PythonProject\douyin-live-suite-clean\apps\desktop\release\糖三角-V26.6.11.5-安装包.exe`，大小 `85,329,047` bytes，SHA256 `A8746750CCE8FF323EDE15A4DD8C0801BD84091E3925AAE87C9943F04C1B3118`。
+- 边界：不改变采集入口、SQLite 表结构、统计/导出口径、每会话原始明细 50000 条上限、UI 评论 200 条近期窗口和特别关注展示口径。

@@ -650,3 +650,64 @@ Release artifact:
 Conclusion:
 - The real-room smoke harness now provides stronger evidence and no longer crashes during normal stop.
 - Final installation/manual acceptance remains with the user.
+
+## 23. V26.6.11.5 UI Backfill Window and Page-Probe Retest
+
+Purpose:
+- Investigate continued user-visible message loss on `https://live.douyin.com/127874409138`.
+- Distinguish collector/DB/SSE loss from UI recent-window and history-backfill loss.
+
+Root cause found:
+- `/api/events` returns recent comments in descending order.
+- The web UI previously sliced the tail of the returned array before sorting, so when history backfill returned more than 600 comments, the newest comments could be removed before the 200-row visible window was computed.
+- This can make the UI appear to lose recent comments even when collector, DB and SSE are consistent.
+
+Fix summary:
+- `normalizeDisplayItems()` now sorts all candidate events by real event order first, then applies the display-window candidate trim and final 200-row comment window.
+- Real-room smoke now installs an in-page `MutationObserver + 250ms scan` visible comment probe and reports `pageProbe` counters.
+
+Command results:
+
+| Command | Result |
+| --- | --- |
+| `node apps/web/scripts/regression-comment-history-desc-order.mjs` | PASS |
+| `node apps/web/scripts/regression-comment-display-loss.mjs` | PASS |
+| `node apps/web/scripts/regression-comment-history-backfill.mjs` | PASS |
+| `node apps/web/scripts/regression-stream-queue-no-comment-loss.mjs` | PASS |
+| `node --import tsx apps/server/scripts/regression-real-room-smoke-visible-observer.mjs` | PASS |
+| `node --import tsx apps/server/scripts/regression-collector-heartbeat-stop-race.mjs` | PASS |
+| 90s real-room smoke | PASS: raw comments 30, persisted comments 10, `pageProbe.unmatchedCount=0` |
+| 5m real-room smoke | PASS: raw comments 126, persisted comments 42, deduped 84 |
+| `npm run test:regression` | PASS: server 28, web 15, desktop 6 |
+| `npm run audit:security` | PASS: high=0; remaining `exceljs -> uuid` 2 moderate |
+| `npm run desktop:pack:fast` | PASS; packaged native ABI gate passed |
+
+Five-minute smoke result:
+
+| Item | Value |
+| --- | --- |
+| Room | `https://live.douyin.com/127874409138` |
+| Duration | 300 seconds |
+| Raw events | 319 |
+| Raw comments | 126 |
+| Persisted events | 171 |
+| Persisted comments | 42 |
+| Entries / interactions / gifts | 121 / 8 / 0 |
+| Comment ledger | raw 126, deduped 84, DB inserted 42, bus published 42 |
+| SourceId suspicious groups | `[]` |
+| Node visible observer | uniqueComments 36, `unmatchedCount=0` |
+| In-page probe | scans 790, mutations 387, candidates 10658, uniqueComments 36, `unmatchedCount=0` |
+
+Conclusion:
+- This round found and fixed a UI-side latest-comment backfill loss risk.
+- The enhanced real-room sample did not show distinct visible comments being dropped by collector/DB/SSE.
+- Full installed-app acceptance remains with the user.
+
+Release artifact:
+
+| Item | Value |
+| --- | --- |
+| Version | `V26.6.11.5` / `26.6.11-5` |
+| Installer | `C:\Users\85855\PycharmProjects\PythonProject\douyin-live-suite-clean\apps\desktop\release\糖三角-V26.6.11.5-安装包.exe` |
+| Size | `85,329,047` bytes |
+| SHA256 | `A8746750CCE8FF323EDE15A4DD8C0801BD84091E3925AAE87C9943F04C1B3118` |

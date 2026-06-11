@@ -108,6 +108,12 @@ const visibleCommentObserver = {
   candidates: 0,
   comments: new Map(),
 };
+let pageProbeSnapshot = {
+  scans: 0,
+  mutations: 0,
+  candidates: 0,
+  comments: [],
+};
 const published = [];
 const unsubscribe = service.bus.subscribe((message) => {
   if (message.type === 'event') {
@@ -179,6 +185,125 @@ const collector = new DouyinCollector(
 let visiblePollTimer;
 try {
   await collector.start();
+  const installVisiblePageProbe = async () => {
+    const page = collector.page;
+    if (!page || page.isClosed()) {
+      return;
+    }
+    await page.evaluate(() => {
+      const windowAny = window;
+      if (windowAny.__douyinSmokeVisibleProbe?.installed) {
+        return;
+      }
+      const visibleLeafSelectors = [
+        '.webcast-chatroom___item',
+        '[role="listitem"]',
+        '[data-e2e*="comment-item"]',
+        '[data-e2e*="chat-item"]',
+        '[class*="chatroom___item"]',
+        '[class*="ChatroomItem"]',
+        '[class*="commentItem"]',
+        '[class*="CommentItem"]',
+        '[class*="messageItem"]',
+        '[class*="MessageItem"]',
+      ].join(',');
+      const normalizeText = (value) => String(value ?? '').replace(/\s+/gu, ' ').trim();
+      const state = {
+        installed: true,
+        scans: 0,
+        mutations: 0,
+        candidates: 0,
+        comments: {},
+      };
+      const readRows = () =>
+        Array.from(document.querySelectorAll(visibleLeafSelectors))
+          .filter((node) => {
+            if (!(node instanceof HTMLElement)) {
+              return false;
+            }
+            const hasNestedVisibleLeaf = Array.from(node.querySelectorAll(visibleLeafSelectors)).some((child) => {
+              if (child === node || !(child instanceof HTMLElement)) {
+                return false;
+              }
+              const rect = child.getBoundingClientRect();
+              return rect.width > 0 && rect.height > 0;
+            });
+            if (hasNestedVisibleLeaf) {
+              return false;
+            }
+            const rect = node.getBoundingClientRect();
+            return rect.width > 0 && rect.height > 0;
+          })
+          .slice(-160)
+          .map((node) => normalizeText(node.innerText || node.textContent || ''))
+          .filter(Boolean)
+          .slice(-120);
+      const record = (rowText) => {
+        const key = normalizeText(rowText);
+        if (!key) {
+          return;
+        }
+        const existing = state.comments[key] ?? {
+          rawText: key,
+          seen: 0,
+          firstSeenAt: new Date().toISOString(),
+          lastSeenAt: '',
+        };
+        existing.seen += 1;
+        existing.lastSeenAt = new Date().toISOString();
+        state.comments[key] = existing;
+      };
+      const scan = () => {
+        const rows = readRows();
+        state.scans += 1;
+        state.candidates += rows.length;
+        for (const rowText of rows) {
+          record(rowText);
+        }
+      };
+      const observer = new MutationObserver(() => {
+        state.mutations += 1;
+        scan();
+      });
+      observer.observe(document.body, {
+        childList: true,
+        subtree: true,
+        characterData: true,
+      });
+      const intervalId = setInterval(scan, 250);
+      state.cleanup = () => {
+        observer.disconnect();
+        clearInterval(intervalId);
+      };
+      windowAny.__douyinSmokeVisibleProbe = state;
+      scan();
+    });
+  };
+  const readVisiblePageProbe = async () => {
+    const page = collector.page;
+    if (!page || page.isClosed()) {
+      return pageProbeSnapshot;
+    }
+    return page
+      .evaluate(() => {
+        const probe = window.__douyinSmokeVisibleProbe;
+        if (!probe) {
+          return {
+            scans: 0,
+            mutations: 0,
+            candidates: 0,
+            comments: [],
+          };
+        }
+        return {
+          scans: probe.scans ?? 0,
+          mutations: probe.mutations ?? 0,
+          candidates: probe.candidates ?? 0,
+          comments: Object.values(probe.comments ?? {}),
+        };
+      })
+      .catch(() => pageProbeSnapshot);
+  };
   const pollVisibleComments = async () => {
     const page = collector.page;
     if (!page || page.isClosed()) {
@@ -243,11 +368,13 @@ try {
       visibleCommentObserver.comments.set(parsed.signature, existing);
     }
   };
+  await installVisiblePageProbe();
   await pollVisibleComments();
   visiblePollTimer = setInterval(() => {
     void pollVisibleComments();
   }, 1000);
   await new Promise((resolvePromise) => setTimeout(resolvePromise, durationMs));
+  pageProbeSnapshot = await readVisiblePageProbe();
   await pollVisibleComments();
 } finally {
   if (visiblePollTimer) {
@@ -287,6 +414,24 @@ const visibleComments = Array.from(visibleCommentObserver.comments.values()).sor
 const unmatchedVisibleComments = visibleComments
   .filter((item) => !persistedCommentSignatures.has(item.signature) && !rawCommentSignatures.has(item.signature))
   .slice(0, 20);
+const pageProbeComments = (pageProbeSnapshot.comments ?? [])
+  .map((item) => {
+    const parsed = parseVisibleCommentText(item.rawText);
+    if (!parsed) {
+      return undefined;
+    }
+    return {
+      ...parsed,
+      seen: item.seen ?? 0,
+      firstSeenAt: item.firstSeenAt,
+      lastSeenAt: item.lastSeenAt,
+    };
+  })
+  .filter(Boolean)
+  .sort((left, right) => String(left.firstSeenAt).localeCompare(String(right.firstSeenAt)));
+const unmatchedPageProbeComments = pageProbeComments
+  .filter((item) => !persistedCommentSignatures.has(item.signature) && !rawCommentSignatures.has(item.signature))
+  .slice(0, 20);
 const result = {
   url,
   durationMs,
@@ -317,6 +462,15 @@ const result = {
     unmatchedCount: unmatchedVisibleComments.length,
     recent: visibleComments.slice(-20),
     unmatched: unmatchedVisibleComments,
+  },
+  pageProbe: {
+    scans: pageProbeSnapshot.scans,
+    mutations: pageProbeSnapshot.mutations,
+    candidates: pageProbeSnapshot.candidates,
+    uniqueComments: pageProbeComments.length,
+    unmatchedCount: unmatchedPageProbeComments.length,
+    recent: pageProbeComments.slice(-20),
+    unmatched: unmatchedPageProbeComments,
   },
   recentRawComments,
   recentPersistedComments: comments.slice(-20).map((row) => ({
@@ -352,6 +506,16 @@ if (rawCounters.comment > 0) {
     suspiciousRawCommentGroups.length,
     0,
     'same sourceId raw comment group contained different user/text variants; source identity may be stale',
+  );
+  assert.equal(
+    unmatchedVisibleComments.length,
+    0,
+    'Node visible observer found comments that were absent from raw collector events and persisted DB rows',
+  );
+  assert.equal(
+    unmatchedPageProbeComments.length,
+    0,
+    'in-page visible probe found comments that were absent from raw collector events and persisted DB rows',
   );
   assert.ok(
     comments.every((row) => {

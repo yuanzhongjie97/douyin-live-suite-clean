@@ -1,6 +1,6 @@
 {
   "name": "@douyin-live-suite/web",
-  "version": "26.6.11-4",
+  "version": "26.6.11-5",
   "private": true,
   "type": "module",
   "scripts": {

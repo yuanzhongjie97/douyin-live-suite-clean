@@ -737,3 +737,43 @@ node apps\desktop\scripts\run-regressions.cjs
 | `node apps/server/scripts/smoke-real-room-message-integrity.mjs https://live.douyin.com/127874409138` | PASS：180 秒真实 smoke，raw comments 39、persisted comments 13、deduped 26，`suspiciousRawCommentGroups=[]`，`visibleCommentObserver.unmatchedCount=0` |
 | `npm run desktop:pack:fast` | PASS：生成 `糖三角-V26.6.11.4-安装包.exe`，packaged native ABI 门禁通过 |
 | 安装包 SHA256 | `9AD1EFEB9C8ACC9B616268860382A273232E791D6C71500619F5DDA9C80B89C6` |
+
+## V26.6.11.5 追加测试 SOP：历史回填倒序窗口与页内可见探针
+
+### TC-WEB-015_DESC历史回填不得裁掉最新评论
+- Priority: P0
+- Requirement: 后端 `/api/events` 按 `created_at DESC, id DESC` 返回最近 1000 条评论时，前端必须显示最新 200 条，而不是倒序数组尾部的旧评论。
+- Steps:
+  1. 执行 `node apps/web/scripts/regression-comment-history-desc-order.mjs`。
+  2. 检查 `normalizeDisplayItems()` 是否先 `sort(compareEvents)`，再应用显示窗口。
+- Expected Results:
+  1. 1000 条倒序评论回填后保留 ID 801-1000。
+  2. 不允许使用 `items.slice(-EVENT_LIMITS[category] * 3)` 直接截倒序 API 结果。
+
+### TC-CAP-015_真实Smoke页内可见评论探针
+- Priority: P0
+- Requirement: 真实 smoke 应能记录短暂出现的可见评论，降低 Node 侧 1 秒轮询漏掉短生命周期 DOM 行的风险。
+- Steps:
+  1. 执行 `node --import tsx apps/server/scripts/regression-real-room-smoke-visible-observer.mjs`。
+  2. 执行 `REAL_ROOM_SMOKE_MS=300000 node apps/server/scripts/smoke-real-room-message-integrity.mjs https://live.douyin.com/127874409138`。
+- Expected Results:
+  1. smoke 脚本包含 `__douyinSmokeVisibleProbe`、`MutationObserver`、`characterData: true` 和 `setInterval(scan, 250)`。
+  2. 真实 smoke 输出 `pageProbe.scans/mutations/candidates/uniqueComments/unmatchedCount`。
+  3. `pageProbe.unmatchedCount` 为 0，或输出明确 unmatched 样本进入下一轮定位。
+
+### V26.6.11.5 执行记录
+
+| 项 | 结果 |
+| --- | --- |
+| `node apps/web/scripts/regression-comment-history-desc-order.mjs` | PASS |
+| `node apps/web/scripts/regression-comment-display-loss.mjs` | PASS |
+| `node apps/web/scripts/regression-comment-history-backfill.mjs` | PASS |
+| `node apps/web/scripts/regression-stream-queue-no-comment-loss.mjs` | PASS |
+| `node --import tsx apps/server/scripts/regression-real-room-smoke-visible-observer.mjs` | PASS |
+| `node --import tsx apps/server/scripts/regression-collector-heartbeat-stop-race.mjs` | PASS |
+| 90 秒真实 smoke | PASS：raw comments 30、persisted comments 10、`pageProbe.unmatchedCount=0` |
+| 5 分钟增强真实 smoke | PASS：raw comments 126、persisted comments 42、deduped 84、`suspiciousRawCommentGroups=[]`、`visibleCommentObserver.unmatchedCount=0`、`pageProbe.unmatchedCount=0` |
+| `npm run test:regression` | PASS：server 28、web 15、desktop 6 |
+| `npm run audit:security` | PASS：high=0；保留 `exceljs -> uuid` moderate |
+| `npm run desktop:pack:fast` | PASS：生成 `糖三角-V26.6.11.5-安装包.exe`，packaged native ABI 门禁通过 |
+| 安装包 SHA256 | `A8746750CCE8FF323EDE15A4DD8C0801BD84091E3925AAE87C9943F04C1B3118` |

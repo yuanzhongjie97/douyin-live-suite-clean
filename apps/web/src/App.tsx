@@ -129,6 +129,15 @@ const FONT_SIZE_OPTIONS: Array<{ id: MessageFontSize; label: string }> = [
 
 const VERSION_LOGS = [
   {
+    version: 'V26.6.11.5',
+    date: '2026-06-11',
+    items: [
+      '修复历史回填时后端倒序事件被前端先截尾再排序的问题，避免超过 600 条评论后最新评论被裁掉。',
+      '增强真实直播间 smoke：新增页内 MutationObserver 可见评论探针，持续记录短暂出现的叶子级评论并与 raw/DB/SSE 对照。',
+      '真实直播间 127874409138 已执行 5 分钟增强 smoke：raw 评论 126、入库评论 42、页内探针 unmatchedCount 为 0。',
+    ],
+  },
+  {
     version: 'V26.6.11.4',
     date: '2026-06-11',
     items: [
@@ -1300,9 +1309,13 @@ function isDuplicateEventMetaWithinWindow(existing: EventDuplicateMeta, candidat
 
 function normalizeDisplayItems(items: LiveEvent[], category: EventCategory): LiveEvent[] {
   const uniqueItems = new Map<string, LiveEvent>();
-  const recentItems = items.length > EVENT_LIMITS[category] * 3 ? items.slice(-EVENT_LIMITS[category] * 3) : items;
+  const orderedItems = [...items].sort(compareEvents);
+  const recentItems =
+    orderedItems.length > EVENT_LIMITS[category] * 3
+      ? orderedItems.slice(-EVENT_LIMITS[category] * 3)
+      : orderedItems;
   const recentMetas: EventDuplicateMeta[] = [];
-  for (const item of [...recentItems].sort(compareEvents)) {
+  for (const item of recentItems) {
     if (isLiveConnectCountdownNoise(item)) {
       continue;
     }

@@ -36,4 +36,34 @@ assert.doesNotMatch(
   'visible observer must not scan broad chat/message containers because they create concatenated pseudo-comments',
 );
 
+assert.match(
+  smokeSource,
+  /__douyinSmokeVisibleProbe/u,
+  'real-room smoke must install an in-page visible comment probe so short-lived rows are not missed by coarse Node polling',
+);
+
+assert.match(
+  smokeSource,
+  /new\s+MutationObserver/u,
+  'in-page visible comment probe must use MutationObserver to record row changes as they happen',
+);
+
+assert.match(
+  smokeSource,
+  /characterData:\s*true/u,
+  'in-page visible comment probe must observe text node updates from recycled live-room DOM rows',
+);
+
+assert.match(
+  smokeSource,
+  /setInterval\(scan,\s*250\)/u,
+  'in-page visible comment probe must also scan at 250ms as a fallback for missed mutations',
+);
+
+assert.match(
+  smokeSource,
+  /pageProbe/u,
+  'real-room smoke result must report pageProbe counters separately from Node polling counters',
+);
+
 console.log('real-room smoke visible observer regression checks passed');

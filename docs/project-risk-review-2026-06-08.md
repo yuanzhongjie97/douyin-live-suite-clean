@@ -727,3 +727,33 @@ Release note:
 
 - Real-room smoke remains a sampled validation method; the user's long-running installed-app acceptance is still the final release decision.
 - Existing non-P0 risks remain unchanged: `collector.ts @ts-nocheck`, large-file coupling, export buffer memory profile, no code signing, no CI/coverage gate, no external API support.
+
+## 2026-06-11 V26.6.11.5 UI Backfill Window Risk Closure
+
+### Status
+
+- A P0 user-visible message-loss risk was identified in the web UI history backfill path and fixed.
+- Collector/DB/SSE evidence from the enhanced real-room smoke did not show distinct visible comments being dropped in the sampled run.
+
+### Newly Mitigated Risks
+
+| Risk | Trigger | Impact | Mitigation |
+| --- | --- | --- | --- |
+| Latest comments disappear after history backfill | `/api/events` returns newest-first rows, while `normalizeDisplayItems()` sliced the array tail before sorting | When more than 600 comment rows are backfilled, the UI can keep older comments and omit newer visible comments | Sort all candidate rows by event order first, then apply the recent display window |
+| Real smoke misses short-lived visible rows | Node-side 1s polling can miss DOM rows that appear and disappear between polls | Smoke may falsely conclude collector is complete | Add in-page `MutationObserver + 250ms scan` probe and report `pageProbe.unmatchedCount` |
+
+### Verification
+
+| Check | Result |
+| --- | --- |
+| `node apps/web/scripts/regression-comment-history-desc-order.mjs` | PASS |
+| Frontend comment regressions | PASS: display loss, history backfill, stream queue no comment loss |
+| Real-room smoke with page probe | PASS: 5 minutes on `https://live.douyin.com/127874409138`; raw comments 126, persisted comments 42, deduped 84, `suspiciousRawCommentGroups=[]`, `visibleCommentObserver.unmatchedCount=0`, `pageProbe.unmatchedCount=0` |
+| `npm run test:regression` | PASS: server 28, web 15, desktop 6 |
+| `npm run audit:security` | PASS: high=0; existing `exceljs -> uuid` moderate remains |
+| `npm run desktop:pack:fast` | PASS; installer `糖三角-V26.6.11.5-安装包.exe`, SHA256 `A8746750CCE8FF323EDE15A4DD8C0801BD84091E3925AAE87C9943F04C1B3118` |
+
+### Remaining Risks
+
+- UI still intentionally shows only the latest 200 comments; database, export, statistics and diagnostics remain the authoritative full retained detail path.
+- Final installed-app acceptance remains with the user, especially during a busier room period where comments exceed the recent UI window quickly.

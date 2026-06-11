@@ -366,3 +366,10 @@
 - 新增边界：停止采集期间 heartbeat、刷新观察器和页面关闭可能并发发生；正常停止中的 closed-target 错误应被容忍，不得导致进程崩溃或误报 fatal。
 - `V26.6.11.4` 已对 `https://live.douyin.com/127874409138` 做 180 秒真实 smoke：raw comments 39、persisted comments 13、deduped 26，`suspiciousRawCommentGroups=[]`，`visibleCommentObserver.unmatchedCount=0`。
 - 本次仍不改变业务功能、采集入口、SQLite 表结构、统计/导出口径、每会话 50000 条原始明细上限、UI 近期窗口和特别关注展示口径。
+
+## 20. 2026-06-11 V26.6.11.5 UI 近期评论回填边界
+
+- 新增边界：后端 `/api/events` 返回最近事件为 `created_at DESC, id DESC` 时，前端必须先按真实事件顺序排序，再应用评论 200 条近期显示窗口；不得先截取倒序数组尾部，否则会丢掉最新评论。
+- 新增边界：真实 smoke 除 Node 侧 1 秒可见行轮询外，还必须安装页内 `MutationObserver + 250ms scan` 探针，记录短暂出现的叶子级可见评论并与 raw/DB/SSE 对照。
+- `V26.6.11.5` 已对 `https://live.douyin.com/127874409138` 做 5 分钟增强 smoke：raw comments 126、persisted comments 42、deduped 84，`suspiciousRawCommentGroups=[]`，`visibleCommentObserver.unmatchedCount=0`，`pageProbe.unmatchedCount=0`。
+- 本次修复 UI 历史回填近期窗口和真实 smoke 证据能力，不改变采集入口、SQLite 表结构、统计/导出口径、每会话 50000 条原始明细上限、UI 评论 200 条近期窗口和特别关注展示口径。

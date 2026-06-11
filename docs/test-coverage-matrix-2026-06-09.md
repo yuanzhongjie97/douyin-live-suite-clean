@@ -137,3 +137,15 @@
 | 最新总回归门禁 | `npm run test:regression` | PASS：server 28、web 14、desktop 6 | 新发包前继续重跑 |
 | 最新安全门禁 | `npm run audit:security` | PASS：high=0；保留 `exceljs -> uuid` moderate | 无 |
 | 打包门禁 | `npm run desktop:pack:fast` | PASS：`糖三角-V26.6.11.4-安装包.exe`，SHA256 `9AD1EFEB9C8ACC9B616268860382A273232E791D6C71500619F5DDA9C80B89C6` | 安装后启动与真实业务手工验收 |
+
+## 13. 2026-06-11 V26.6.11.5 UI 近期回填与页内探针门禁追加
+
+| P0 模块 | 自动化脚本 | 覆盖结论 | 仍需人工 |
+| --- | --- | --- | --- |
+| 历史回填倒序窗口 | `regression-comment-history-desc-order.mjs` | 后端倒序返回 1000 条时，前端先排序再截窗口，保留最新 200 条评论 | 安装后用户观察 UI 最新评论 |
+| 前端评论不丢回归 | `regression-comment-display-loss.mjs`、`regression-comment-history-backfill.mjs`、`regression-stream-queue-no-comment-loss.mjs` | 评论不按正文/身份短窗口去重；SSE 队列保留到 50000；历史回填节流仍有效 | 长时直播间 UI 观察 |
+| 真实 smoke 页内探针 | `regression-real-room-smoke-visible-observer.mjs`、`smoke-real-room-message-integrity.mjs` | 页内 `MutationObserver + 250ms scan` 记录短暂出现的叶子级评论，并输出 `pageProbe` 对照 | 高峰直播间继续观察 |
+| 5 分钟真实直播间 smoke | `smoke-real-room-message-integrity.mjs` | `127874409138` 5 分钟：raw comments 126、persisted comments 42、deduped 84，`suspiciousRawCommentGroups=[]`，`visibleCommentObserver.unmatchedCount=0`，`pageProbe.unmatchedCount=0` | 用户最终验收 |
+| 最新总回归门禁 | `npm run test:regression` | PASS：server 28、web 15、desktop 6 | 新发包前继续重跑 |
+| 最新安全门禁 | `npm run audit:security` | PASS：high=0；保留 `exceljs -> uuid` moderate | 无 |
+| 打包门禁 | `npm run desktop:pack:fast` | PASS：`糖三角-V26.6.11.5-安装包.exe`，SHA256 `A8746750CCE8FF323EDE15A4DD8C0801BD84091E3925AAE87C9943F04C1B3118` | 安装后启动与真实业务手工验收 |
