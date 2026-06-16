@@ -12,6 +12,7 @@ import './styles.css';
 import type {
   BrowserState,
   EventCategory,
+  EventHistoryCursor,
   HighlightUserConfig,
   HighlightUsersSnapshot,
   LiveEvent,
@@ -2676,6 +2677,166 @@ const EventList = memo(function EventList({
   );
 });
 
+function EventHistoryPanel({
+  sessionId,
+  open,
+  onClose,
+  highlightUsers,
+}: {
+  sessionId?: string;
+  open: boolean;
+  onClose: () => void;
+  highlightUsers: CompiledHighlightUser[];
+}) {
+  const [historyCategory, setHistoryCategory] = useState<Extract<EventCategory, 'comment' | 'gift'>>('comment');
+  const [historyRows, setHistoryRows] = useState<LiveEvent[]>([]);
+  const [historyCursor, setHistoryCursor] = useState<EventHistoryCursor | undefined>(undefined);
+  const [historyQuery, setHistoryQuery] = useState('');
+  const [historyDraftQuery, setHistoryDraftQuery] = useState('');
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyError, setHistoryError] = useState('');
+  const historyRequestSeqRef = useRef(0);
+
+  const loadHistoryPage = useStableEvent(async (reset = false) => {
+    if (!sessionId) {
+      return;
+    }
+    const requestSeq = historyRequestSeqRef.current + 1;
+    historyRequestSeqRef.current = requestSeq;
+    setHistoryLoading(true);
+    setHistoryError('');
+    try {
+      const response = await api.getEventHistory({
+        sessionId,
+        category: historyCategory,
+        limit: 100,
+        cursor: reset ? undefined : historyCursor,
+        q: historyQuery,
+      });
+      if (historyRequestSeqRef.current !== requestSeq) {
+        return;
+      }
+      if (reset) {
+        setHistoryRows(response.items);
+      } else {
+        setHistoryRows((current) => [...current, ...response.items]);
+      }
+      setHistoryCursor(response.nextCursor);
+    } catch (reason) {
+      if (historyRequestSeqRef.current === requestSeq) {
+        setHistoryError(reason instanceof Error ? reason.message : '读取历史消息失败');
+      }
+    } finally {
+      if (historyRequestSeqRef.current === requestSeq) {
+        setHistoryLoading(false);
+      }
+    }
+  });
+
+  useEffect(() => {
+    setHistoryRows([]);
+    setHistoryCursor(undefined);
+    setHistoryError('');
+  }, [sessionId, historyCategory, historyQuery]);
+
+  useEffect(() => {
+    if (!open || !sessionId) {
+      return;
+    }
+    void loadHistoryPage(true);
+  }, [open, sessionId, historyCategory, historyQuery, loadHistoryPage]);
+
+  if (!open) {
+    return null;
+  }
+
+  const categoryLabel = historyCategory === 'comment' ? '评论' : '礼物';
+  return (
+    <section className="block history-panel">
+      <div className="history-panel-head">
+        <div>
+          <div className="block-title history-title">历史查询</div>
+          <div className="history-subtitle">查看数据库已保留的{categoryLabel}历史，主界面仍保持实时窗口。</div>
+        </div>
+        <button className="history-close-btn" onClick={onClose} type="button">
+          关闭
+        </button>
+      </div>
+
+      <div className="history-controls">
+        <div className="history-tabs">
+          <button
+            className={`history-tab ${historyCategory === 'comment' ? 'is-active' : ''}`.trim()}
+            onClick={() => setHistoryCategory('comment')}
+            type="button"
+          >
+            评论
+          </button>
+          <button
+            className={`history-tab ${historyCategory === 'gift' ? 'is-active' : ''}`.trim()}
+            onClick={() => setHistoryCategory('gift')}
+            type="button"
+          >
+            礼物
+          </button>
+        </div>
+        <form
+          className="history-search"
+          onSubmit={(event) => {
+            event.preventDefault();
+            setHistoryQuery(historyDraftQuery.trim());
+          }}
+        >
+          <input
+            className="filter-input"
+            value={historyDraftQuery}
+            onChange={(event) => setHistoryDraftQuery(event.target.value)}
+            placeholder="搜索昵称、评论、礼物"
+          />
+          <button className="toolbar-btn" type="submit" disabled={!sessionId || historyLoading}>
+            查询
+          </button>
+        </form>
+      </div>
+
+      {!sessionId ? <div className="event-empty">暂无会话，无法查询历史</div> : null}
+      {historyError ? <div className="toolbar-error">{historyError}</div> : null}
+
+      <div className="history-list" aria-label={`${categoryLabel}历史消息`}>
+        {historyRows.length === 0 && !historyLoading ? <div className="event-empty">暂无历史数据</div> : null}
+        {historyRows.map((item) => {
+          const highlightUser = getHighlightUserMatch(item, historyCategory, highlightUsers);
+          return (
+            <div
+              className={`event-row history-row ${highlightUser ? 'event-row-highlight-user' : ''}`.trim()}
+              key={item.uniqueKey}
+            >
+              {highlightUser ? (
+                <div className="event-highlight-marker">
+                  特别关注 {highlightUser.remark || highlightUser.userId}
+                </div>
+              ) : null}
+              <div className="event-line">{renderEventLine(item, historyCategory, highlightUser)}</div>
+            </div>
+          );
+        })}
+      </div>
+
+      <div className="history-footer">
+        <span className="history-count">已加载 {historyRows.length} 条{categoryLabel}</span>
+        <button
+          className="toolbar-btn"
+          onClick={() => void loadHistoryPage(false)}
+          disabled={!sessionId || historyLoading || !historyCursor}
+          type="button"
+        >
+          {historyLoading ? '加载中...' : historyCursor ? '继续加载' : '已到底'}
+        </button>
+      </div>
+    </section>
+  );
+}
+
 const DualEventBlock = memo(function DualEventBlock({
   sessionId,
   collapsed,
@@ -3081,6 +3242,7 @@ export default function App() {
   const [alwaysOnTopBusy, setAlwaysOnTopBusy] = useState(false);
   const [versionLogOpen, setVersionLogOpen] = useState(false);
   const [highlightPanelOpen, setHighlightPanelOpen] = useState(false);
+  const [historyPanelOpen, setHistoryPanelOpen] = useState(false);
   const [highlightHitEvents, setHighlightHitEvents] = useState<LiveEvent[]>([]);
   const [lastSessionId, setLastSessionId] = useState<string | undefined>(undefined);
   const [themeId, setThemeId] = useState<ThemeId>(() => readTheme());
@@ -4088,6 +4250,9 @@ export default function App() {
           <button className="toolbar-btn" onClick={openMysteryWindow}>
             神秘人
           </button>
+          <button className="toolbar-btn" onClick={() => setHistoryPanelOpen(true)} disabled={!sessionId}>
+            历史查询
+          </button>
           <button className="toolbar-btn" onClick={() => void handleCopyDiagnostics()}>
             复制诊断
           </button>
@@ -4172,6 +4337,13 @@ export default function App() {
         focusMode={focusMode}
         highlightUsers={compiledHighlightUsers}
         messageFontSize={messageFontSize}
+      />
+
+      <EventHistoryPanel
+        sessionId={sessionId}
+        open={historyPanelOpen}
+        onClose={() => setHistoryPanelOpen(false)}
+        highlightUsers={compiledHighlightUsers}
       />
 
     </main>

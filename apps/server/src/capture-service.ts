@@ -15,6 +15,8 @@ import {
 } from './security.js';
 import type {
   EventCategory,
+  EventHistoryQuery,
+  EventHistoryResult,
   EventQuery,
   HighlightUserConfig,
   HighlightUsersQuery,
@@ -1311,6 +1313,10 @@ export class CaptureService {
 
   getEvents(query: EventQuery): LiveEvent[] {
     return this.db.getEvents(query);
+  }
+
+  getEventHistory(query: EventHistoryQuery): EventHistoryResult {
+    return this.db.getEventHistory(query);
   }
 
   getStats(sessionId?: string): SessionStats {

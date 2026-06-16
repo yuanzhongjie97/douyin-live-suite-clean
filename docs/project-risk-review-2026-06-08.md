@@ -877,3 +877,25 @@ Release note:
 - No runtime source code changed in this review; this is a boundary and impact-surface update.
 - Existing P0 mitigations remain valid, but recurrence must be diagnosed by layer before another fix is attempted.
 - Remaining structural risks are still P1/P2 unless evidence shows DB/export loss or stable-identity remark miss: collector `@ts-nocheck`, large collector file, export buffer memory profile, no code signing, no CI/coverage hard gate, no external API support.
+
+## 2026-06-16 UI Full-History Query Risk Closure
+
+### Status
+
+- The previous product boundary "recent UI window only, no full-history UI" is superseded for comments and gifts.
+- The main realtime panels remain bounded for performance: comments 200 and gifts 120.
+- A separate DB-backed history query now covers retained comments and gifts in the UI, so manual review no longer depends only on Excel.
+
+### Mitigated Risk
+
+| Risk | Trigger | Impact | Mitigation |
+| --- | --- | --- | --- |
+| Operator cannot inspect old retained comments/gifts in UI | A busy room exceeds the realtime 200/120 display windows | User may believe comments or gift remarks are lost even though DB/export retained them | Added `/api/events/history` keyset pagination and a `历史查询` UI panel for comments/gifts |
+| Full history UI causes main panel lag | Attempting to load all rows into realtime arrays | Main capture window becomes slow or unstable | History query is separate from realtime `events.comment/events.gift`; each page is capped at 200 |
+| Search or category switch shows stale rows | Slow request returns after the user switches comment/gift or keyword | UI can display wrong evidence during triage | History panel ignores stale responses by request sequence |
+
+### Remaining Boundary
+
+- History query can only show events still retained in SQLite under the current 50,000 raw-detail limit.
+- It does not change collector parsing, dedupe, SSE, statistics, Excel export, special-follow matching, or nickname-fallback policy.
+- Long-duration real-room acceptance still requires user拍板 after packaging.

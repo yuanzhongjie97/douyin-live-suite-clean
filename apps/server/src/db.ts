@@ -2,6 +2,8 @@
 import path from 'node:path';
 import Database from 'better-sqlite3';
 import type {
+  EventHistoryQuery,
+  EventHistoryResult,
   EventQuery,
   HighlightUserConfig,
   LiveEvent,
@@ -890,6 +892,64 @@ export class AppDatabase {
         LIMIT ?
       `)
       .all(...args) as LiveEvent[];
+  }
+
+  getEventHistory(query: EventHistoryQuery): EventHistoryResult {
+    const limit = Math.min(Math.max(query.limit ?? 100, 1), 200);
+    const clauses = ['session_id = ?', 'category = ?'];
+    const args: Array<string | number> = [query.sessionId, query.category];
+    const keyword = String(query.q ?? '').trim().toLowerCase();
+
+    if (query.cursorCreatedAt && typeof query.cursorId === 'number') {
+      clauses.push('(created_at < ? OR (created_at = ? AND id < ?))');
+      args.push(query.cursorCreatedAt, query.cursorCreatedAt, query.cursorId);
+    }
+
+    if (keyword) {
+      clauses.push(`(
+        LOWER(COALESCE(user_name, '')) LIKE ?
+        OR LOWER(COALESCE(message, '')) LIKE ?
+        OR LOWER(COALESCE(gift_name, '')) LIKE ?
+      )`);
+      const likeKeyword = `%${keyword}%`;
+      args.push(likeKeyword, likeKeyword, likeKeyword);
+    }
+
+    args.push(limit + 1);
+    const rows = this.db
+      .prepare(`
+        SELECT
+          id,
+          unique_key AS uniqueKey,
+          session_id AS sessionId,
+          category,
+          created_at AS createdAt,
+          room_id AS roomId,
+          room_title AS roomTitle,
+          host_name AS hostName,
+          user_name AS userName,
+          user_id AS userId,
+          user_link AS userLink,
+          message,
+          gift_name AS giftName,
+          gift_count AS giftCount,
+          payload_json AS payloadJson
+        FROM events
+        WHERE ${clauses.join(' AND ')}
+        ORDER BY created_at DESC, id DESC
+        LIMIT ?
+      `)
+      .all(...args) as LiveEvent[];
+
+    const hasMore = rows.length > limit;
+    const items = hasMore ? rows.slice(0, limit) : rows;
+    const last = items[items.length - 1];
+    return {
+      items,
+      nextCursor: rows.length > limit && typeof last?.id === 'number'
+        ? { createdAt: last.createdAt, id: last.id }
+        : undefined,
+    };
   }
 
 

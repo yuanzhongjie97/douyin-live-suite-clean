@@ -918,3 +918,35 @@ Documentation updates:
 Execution result:
 - This pass did not run `npm run test:regression` or `npm run audit:security` because no runtime source code changed.
 - Git cleanliness checks are required before commit and push to confirm no installer, log, DB, cache, or build artifact is tracked.
+
+## 28. 2026-06-16 UI Full-History Query Retest
+
+Purpose:
+- Implement the user-confirmed boundary: keep the main realtime UI windows at comments 200 and gifts 120, while adding a DB-backed UI path to inspect retained comment/gift history.
+- Avoid changing collector, dedupe, DB retention, statistics, Excel export, special-follow matching, or nickname-fallback policy.
+
+Implemented scope:
+
+| Area | Result |
+| --- | --- |
+| Server API | Added `/api/events/history` for comment/gift keyset pagination by `createdAt + id`, capped at 200 rows per page |
+| DB query | Supports newest-first pages, `nextCursor`, and keyword search across user name, message, and gift name |
+| Web API | Added `api.getEventHistory()` |
+| UI | Added `历史查询` panel with comment/gift switch, keyword search, continue-load, and stale-request protection |
+| Realtime window | Kept `EVENT_LIMITS.comment=200` and `EVENT_LIMITS.gift=120` |
+
+Execution result:
+
+| Check | Result |
+| --- | --- |
+| `node --import tsx apps/server/scripts/regression-event-history-pagination.mjs` | PASS |
+| `node apps/web/scripts/regression-event-history-ui-entry.mjs` | PASS |
+| `npm run build:server` | PASS |
+| `npm run build:web` | PASS |
+| `npm run test:regression` | PASS: server 33, web 17, desktop 6 |
+| `npm run audit:security` | FAIL: 4 high remain in current dependency tree: `@babel/core`, `esbuild` via `tsx/vite`, `form-data`; existing moderate `uuid` via `exceljs` remains |
+
+Release status:
+- Do not package or publish this pass until the audit high items are cleared or separately accepted by the user as a dependency-upgrade task.
+- A non-force upgrade attempt was investigated, but it did not converge cleanly in this pass; the partial dependency changes were reverted to avoid mixing an unstable build-chain upgrade into the history-query feature.
+- Git cleanliness checks are still required before commit and push to confirm no installer, log, DB, cache, or build artifact is tracked.

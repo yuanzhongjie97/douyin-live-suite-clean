@@ -137,6 +137,25 @@ export interface EventQuery {
   limit?: number;
 }
 
+export interface EventHistoryCursor {
+  createdAt: string;
+  id: number;
+}
+
+export interface EventHistoryQuery {
+  sessionId: string;
+  category: Extract<EventCategory, 'comment' | 'gift'>;
+  limit?: number;
+  cursorCreatedAt?: string;
+  cursorId?: number;
+  q?: string;
+}
+
+export interface EventHistoryResult {
+  items: LiveEvent[];
+  nextCursor?: EventHistoryCursor;
+}
+
 export interface CollectorCallbacks {
   onEvents(events: RawCollectorEvent[]): Promise<void> | void;
   onStatus(message: string, level?: 'info' | 'warn' | 'error'): Promise<void> | void;

@@ -62,6 +62,22 @@
   3. DB/export present but UI missing means recent-window truncation, queue truncation, or display dedupe.
   4. Gift with stable identity but no remark must expose the identity candidates and highlight matching evidence.
 
+### TC-WEB-017 UI full-history query without realtime-window expansion
+- Priority: P0
+- Requirement: The main realtime panels stay bounded at comments 200 and gifts 120, while the UI provides a DB-backed history query for retained comments and gifts.
+- Steps:
+  1. Run `node --import tsx apps/server/scripts/regression-event-history-pagination.mjs`.
+  2. Run `node apps/web/scripts/regression-event-history-ui-entry.mjs`.
+  3. Open the app with a session that has more than 200 comments or more than 120 gifts.
+  4. Confirm the main panels remain responsive and bounded.
+  5. Click `历史查询`, switch between `评论` and `礼物`, search a keyword, and click `继续加载`.
+- Expected Results:
+  1. `/api/events/history` returns newest-first pages with `nextCursor` and page size capped at 200.
+  2. A comment older than the realtime 200-row window can be found through history search if it is still retained in DB.
+  3. Gift history can be searched by gift name and keeps the same special-follow display口径 as the realtime gift panel.
+  4. Old in-flight history requests are ignored after category or search changes.
+  5. The realtime panels do not load all history rows into `events.comment` or `events.gift`.
+
 ```powershell
 npm run test:regression
 npm run audit:security
