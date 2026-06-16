@@ -20,6 +20,48 @@
 
 发布前必须完成：
 
+## 2026-06-16 Additional SOP: Comment Loss and Gift Remark Boundaries
+
+### TC-CAP-022 DB/export-level comment integrity
+- Priority: P0
+- Requirement: Comment loss is judged by DB, statistics, export, and diagnostics integrity. The UI remains a recent window.
+- Steps:
+  1. Use mock events for same-`sourceId` rescans, different users with the same text, same user with repeated text, and no-`sourceId` comments with `collectorClientId`.
+  2. Check DB comment rows, export event source, comment ledger, and SSE publish count.
+  3. Check that the frontend keeps only the latest 200 comments and that copied diagnostics explain display-window truncation.
+- Expected Results:
+  1. Same DOM/sourceId rescans do not duplicate DB rows.
+  2. Distinct real comments are not removed by same text, same user, or short-time-window rules.
+  3. DB inserted, bus published, export comments, and diagnostics ledger are consistent.
+  4. UI truncation to the recent window is not treated as data loss.
+
+### TC-HL-013 Stable-identity gift remark hit
+- Priority: P0
+- Requirement: Gift remarks must hit special-follow users by stable identity only. Nickname fallback is not allowed.
+- Steps:
+  1. Create gift rows with only top-level `userId`, only top-level `userLink`, only `payloadJson.userId`, only `payloadJson.userLink`, and profile URLs where sec_uid can be extracted.
+  2. Create a gift row without identity, then republish the same `uniqueKey` with stable identity.
+  3. Create a gift row with only the same nickname and no stable identity.
+  4. Inspect gift panel, special-follow hit panel, and copied diagnostics `matchedBy/matchedValue`.
+- Expected Results:
+  1. Any available stable identity must hit the configured remark.
+  2. Late identity updates replace the same gift row, preserve order fields, and recompute the remark.
+  3. Nickname-only gift rows must not hit remarks.
+  4. Display remains `特别关注 备注名` plus `[原昵称] 礼 礼物内容`.
+
+### TC-DIAG-004 Recurrence copied-diagnostics triage
+- Priority: P0
+- Requirement: If the user sees comment loss or gift remark loss manually, copied diagnostics must identify the failing layer.
+- Steps:
+  1. Record screenshot, room URL, session ID, time, visible text or gift row.
+  2. Immediately copy diagnostics.
+  3. Compare recent comments/gifts, persisted comments/gifts, capture ledger, highlight matches, queue overflow, and display limits.
+- Expected Results:
+  1. Raw missing means collector/DOM parsing.
+  2. Raw present but DB/SSE mismatch means server filtering, dedupe, insertion, or publish.
+  3. DB/export present but UI missing means recent-window truncation, queue truncation, or display dedupe.
+  4. Gift with stable identity but no remark must expose the identity candidates and highlight matching evidence.
+
 ```powershell
 npm run test:regression
 npm run audit:security

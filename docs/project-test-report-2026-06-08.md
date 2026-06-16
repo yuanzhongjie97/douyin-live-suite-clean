@@ -888,3 +888,33 @@ Additional long smoke:
 | In-page message probe | uniqueMessages 290, `unmatchedCount=0` |
 | Unmatched visible messages | `[]` |
 | SourceId suspicious groups | `[]` |
+
+## 27. 2026-06-16 Boundary and Impact-Surface Documentation Check
+
+Purpose:
+- Record the latest user-confirmed boundaries for recurring comment loss and gift remark loss.
+- Confirm this pass is documentation-only and does not change business behavior or release artifacts.
+
+Confirmed boundaries:
+
+| Item | Boundary |
+| --- | --- |
+| Comment loss | Judged by DB, statistics, export, and diagnostics integrity; UI remains a recent window |
+| Comment UI window | Keep current source behavior: latest 200 comments only |
+| Gift remark loss | Stable identity must hit: top-level identity, payload identity, or sec_uid from profile URL |
+| Nickname fallback | Not allowed without a new product decision |
+| Recurrence evidence | Screenshot plus copied diagnostics is required for triage |
+| Unchanged limits | 50,000 raw detail events per session, gift UI window 120, no full-history UI |
+
+Documentation updates:
+
+| Document | Result |
+| --- | --- |
+| PRD | Added 2026-06-16 boundary confirmation |
+| Testing SOP | Added P0 cases for DB/export comment integrity, stable-identity gift remarks, and copied diagnostics |
+| Risk report | Added impact-surface table for collector, server dedupe, DB/API/export, SSE/frontend, and highlight matching |
+| Test report | Added this documentation-only verification record |
+
+Execution result:
+- This pass did not run `npm run test:regression` or `npm run audit:security` because no runtime source code changed.
+- Git cleanliness checks are required before commit and push to confirm no installer, log, DB, cache, or build artifact is tracked.

@@ -851,3 +851,29 @@ Release note:
 - The current evidence covers sampled real-room traffic and mock stop-boundary behavior; user installed-app acceptance remains required after packaging.
 - Real-room smoke can still reveal new Douyin DOM variants later.
 - Existing non-P0 risks remain unchanged: `collector.ts @ts-nocheck`, large-file coupling, export buffer memory profile, no code signing, no CI/coverage gate, no external API support.
+
+## 2026-06-16 Boundary Review: Comment Loss and Gift Remark Loss
+
+### Confirmed Product Boundary
+
+- Comment loss is judged at the DB, statistics, export, and diagnostics layers. The UI recent window is not full history.
+- Gift remark loss is judged by stable identity matching. A gift must hit special-follow remarks when `userId`, `userLink`, payload identity, or sec_uid from a profile URL is available.
+- Nickname fallback remains out of scope because it can match the wrong person in busy rooms.
+- Screenshots alone are not enough for future recurrence triage; copied diagnostics are required to identify the broken layer.
+
+### Risk Code Paths That Can Affect Recurrence
+
+| Area | Code path | Possible trigger | Failure if regressed |
+| --- | --- | --- | --- |
+| Collector DOM parsing | `apps/server/src/collector.ts` visible scan, React payload cache, gift bridge, pending flush | Douyin changes DOM shape, reuses rows, delays payload identity, or stop happens before flush | Visible comments/gifts never reach raw collector events |
+| Server filtering and dedupe | `apps/server/src/capture-service.ts` `persistCollectorEvents`, recent duplicate maps, gift identity updates | Same text appears quickly, source identity changes, gift identity arrives later | Real comments are filtered/deduped, or gift remark update is not republished |
+| Unique key generation | `apps/server/src/utils.ts` `buildUniqueKey` | Same source rescans or no-source repeated comments | Duplicate rows appear, or real repeated comments collapse into one |
+| DB/API/export | `apps/server/src/db.ts`, `apps/server/src/exporter.ts` | Query limit confusion or export source mismatch | DB/export evidence diverges from UI or stats |
+| SSE and frontend queues | `apps/server/src/index.ts`, `apps/web/src/App.tsx` EventSource, incoming queues, display limits | Slow UI, window move, queue backlog, stream reconnect | DB has data but UI recent window or diagnostics look incomplete |
+| Special-follow matching | `apps/server/src/capture-service.ts`, `apps/web/src/App.tsx` highlight matching | Identity only exists in payload or arrives after first gift row | Gift row appears without remark despite stable identity |
+
+### Current Risk Status
+
+- No runtime source code changed in this review; this is a boundary and impact-surface update.
+- Existing P0 mitigations remain valid, but recurrence must be diagnosed by layer before another fix is attempted.
+- Remaining structural risks are still P1/P2 unless evidence shows DB/export loss or stable-identity remark miss: collector `@ts-nocheck`, large collector file, export buffer memory profile, no code signing, no CI/coverage hard gate, no external API support.
