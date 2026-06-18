@@ -899,3 +899,33 @@ Release note:
 - History query can only show events still retained in SQLite under the current 50,000 raw-detail limit.
 - It does not change collector parsing, dedupe, SSE, statistics, Excel export, special-follow matching, or nickname-fallback policy.
 - Long-duration real-room acceptance still requires user拍板 after packaging.
+
+## 2026-06-18 P0 Recurrence Risk Update
+
+### Comment appears lost in the UI
+
+Current status: mitigated by stronger UI traceability.
+
+- Main realtime comment panel remains capped at 200 rows for performance.
+- DB-backed history query is the formal retained-history UI path.
+- Frontend diagnostics now record `displayedInMainWindow`, `mainWindowTrimmed`, and `historyQueryable`.
+- If a comment exists in DB/history but is not visible in the main panel because of the 200-row window, the issue is classified as display-window trimming, not data loss.
+
+Remaining risk: real Douyin DOM changes can still cause collector-side misses. If reproduced, triage must include screenshot, session ID, time point, copied diagnostics, and the visible comment/gift text.
+
+### Gift special-follow remark disappears
+
+Current status: mitigated for stable-identity and clean identity-cache scenarios.
+
+- Matching still uses stable identity only: top-level `userId/userLink`, payload `userId/userLink`, or extracted sec_uid.
+- Gifts without direct identity can backfill identity from the same-session/same-room clean identity cache built by earlier comment/entry/interaction events.
+- Highlight diagnostics now expose `source: identity_cache_backfill` for cache-backed gift remarks.
+- If one display name maps to multiple stable identities, the gift does not backfill and diagnostics record `gift.identity_conflict`.
+
+Remaining risk: a gift with no direct identity and no prior clean identity cache remains `pending_identity`; pure nickname fallback is intentionally disabled to avoid mislabeling same-name users.
+
+### Updated residual risks
+
+- `apps/server/src/collector.ts` still has broad responsibilities and `@ts-nocheck`; collector DOM changes remain the highest long-term source of real-room regressions.
+- Main UI is not a full-history renderer by design; full retained history must be checked through the history query panel and export.
+- Any release that touches collector, event dedupe, SSE, history query, or highlight matching must run the P0 mock gates before packaging.

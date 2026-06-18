@@ -377,3 +377,11 @@
 - 追加验证：`V26.6.12.1` 代码路径对 `https://live.douyin.com/127874409138` 做 10 分钟真实 smoke，raw total 600、raw comments 205、persisted total 302、persisted comments 51、entries 241、interactions 10；四类可见探针 `unmatchedCount=0`，`unmatchedVisibleMessages=[]`，`suspiciousRawCommentGroups=[]`。
 - 打包：版本升为 `V26.6.12.1` / `26.6.12-1`；`npm run desktop:pack:fast` 通过并执行 packaged native ABI 门禁；安装包 `C:\Users\85855\PycharmProjects\PythonProject\douyin-live-suite-clean\apps\desktop\release\糖三角-V26.6.12.1-安装包.exe`，大小 `85,329,128` bytes，SHA256 `3AE6D269F9A90BEB52585649C131C7E47A9D822A7D16D294555FDFCA3B71CEEB`。
 - 边界：不改变采集入口、SQLite 表结构、统计/导出口径、每会话原始明细 50000 条上限、UI 近期窗口和特别关注展示口径；安装后最终人工验收仍由用户拍板。
+
+### 68 V26.6.18.1 评论展示账本与礼物备注缓存反哺打包
+- 内容：新增评论展示账本，复制诊断可区分主窗口 200 条裁剪、历史可查询和真实链路丢失；历史查询继续作为 DB 保留范围内的全量 UI 排查入口。
+- 内容：礼物缺稳定身份时可使用同会话/同直播间已建立的干净稳定身份缓存反哺备注；命中诊断记录 `source: identity_cache_backfill`，同昵称多身份冲突记录 `gift.identity_conflict` 且不误补备注。
+- 验证：`node apps/desktop/scripts/regression-release-version.cjs` 通过；`npm run audit:security` high 门禁通过；`npm run test:regression` 通过 server 33、web 17、desktop 6。
+- 打包：版本升为 `V26.6.18.1` / `26.6.18-1`；`npm run desktop:pack:fast` 通过，打包过程完成 better-sqlite3 Electron ABI 143 重编并通过 packaged native ABI 门禁。
+- 产物：`C:\Users\85855\PycharmProjects\PythonProject\douyin-live-suite-clean\apps\desktop\release\糖三角-V26.6.18.1-安装包.exe`，大小 `85,330,483` bytes，SHA256 `DE053F97CC8BC4A712DD9739B7D315FB25A5E7D8B4EBFD83EA3889CB406376A0`。
+- 边界：继续固定每会话原始明细 50000 条、主评论 200、礼物 120；不启用纯昵称兜底；安装后最终手工验收仍由用户拍板。

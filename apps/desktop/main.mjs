@@ -5,7 +5,7 @@ import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 const APP_NAME = '\u7cd6\u4e09\u89d2';
-const APP_RELEASE_TAG = 'V26.6.12.1';
+const APP_RELEASE_TAG = 'V26.6.18.1';
 const POPUP_TITLE = '\u795e\u79d8\u4eba';
 const DEFAULT_MAIN_WINDOW_SIZE = {
   width: 1480,

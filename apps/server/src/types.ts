@@ -64,6 +64,8 @@ export interface RawCollectorEvent {
   userLink?: string;
   giftName?: string;
   giftCount?: number;
+  identityBackfillSource?: 'identity_cache';
+  identityBackfillMatchedName?: string;
 }
 
 export interface SessionStats {

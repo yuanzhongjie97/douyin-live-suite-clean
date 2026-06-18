@@ -35,6 +35,9 @@ type FrontendCommentDiagnostics = {
   displayNoise: number;
   displayCategoryMismatch: number;
   historyCommentBackfill: number;
+  historyQueryable: number;
+  displayedInMainWindow: number;
+  mainWindowTrimmed: number;
   lastCommentUniqueKey: string;
   lastCommentCreatedAt: string;
   lastSseCommentReceivedAt: string;
@@ -129,6 +132,15 @@ const FONT_SIZE_OPTIONS: Array<{ id: MessageFontSize; label: string }> = [
 ];
 
 const VERSION_LOGS = [
+  {
+    version: 'V26.6.18.1',
+    date: '2026-06-18',
+    items: [
+      '新增评论展示账本：复制诊断可区分主窗口 200 条裁剪、历史可查询和真实链路丢失。',
+      '礼物备注支持同会话/同直播间稳定身份缓存反哺，命中诊断标记 identity_cache_backfill。',
+      '同昵称多稳定身份冲突时不补备注并记录 identity_conflict；继续固定 5 万明细、评论 200、礼物 120。',
+    ],
+  },
   {
     version: 'V26.6.12.1',
     date: '2026-06-12',
@@ -735,6 +747,9 @@ const EMPTY_FRONTEND_COMMENT_DIAGNOSTICS: FrontendCommentDiagnostics = {
   displayNoise: 0,
   displayCategoryMismatch: 0,
   historyCommentBackfill: 0,
+  historyQueryable: 0,
+  displayedInMainWindow: 0,
+  mainWindowTrimmed: 0,
   lastCommentUniqueKey: '',
   lastCommentCreatedAt: '',
   lastSseCommentReceivedAt: '',
@@ -1386,6 +1401,8 @@ function appendDisplayItemsWithDiagnostics(
     noise: number;
     uniqueKeyDuplicate: number;
     duplicate: number;
+    displayedInMainWindow: number;
+    mainWindowTrimmed: number;
     skipped: DisplaySkipDiagnostic[];
   };
 } {
@@ -1394,6 +1411,8 @@ function appendDisplayItemsWithDiagnostics(
     noise: 0,
     uniqueKeyDuplicate: 0,
     duplicate: 0,
+    displayedInMainWindow: category === 'comment' ? items.length : 0,
+    mainWindowTrimmed: 0,
     skipped: [] as DisplaySkipDiagnostic[],
   };
   if (!rows.length) {
@@ -1464,10 +1483,19 @@ function appendDisplayItemsWithDiagnostics(
   }
 
   if (!changed) {
+    if (category === 'comment') {
+      diagnostics.displayedInMainWindow = items.length;
+    }
     return { items, diagnostics };
   }
 
-  return { items: Array.from(uniqueItems.values()).sort(compareEvents).slice(-EVENT_LIMITS[category]), diagnostics };
+  const sortedItems = Array.from(uniqueItems.values()).sort(compareEvents);
+  const nextItems = sortedItems.slice(-EVENT_LIMITS[category]);
+  if (category === 'comment') {
+    diagnostics.displayedInMainWindow = nextItems.length;
+    diagnostics.mainWindowTrimmed = Math.max(0, sortedItems.length - nextItems.length);
+  }
+  return { items: nextItems, diagnostics };
 }
 
 function compareEventsDesc(a: Pick<LiveEvent, 'createdAt'>, b: Pick<LiveEvent, 'createdAt'>): number {
@@ -2682,11 +2710,13 @@ function EventHistoryPanel({
   open,
   onClose,
   highlightUsers,
+  onCommentHistoryLoaded,
 }: {
   sessionId?: string;
   open: boolean;
   onClose: () => void;
   highlightUsers: CompiledHighlightUser[];
+  onCommentHistoryLoaded?: (count: number) => void;
 }) {
   const [historyCategory, setHistoryCategory] = useState<Extract<EventCategory, 'comment' | 'gift'>>('comment');
   const [historyRows, setHistoryRows] = useState<LiveEvent[]>([]);
@@ -2722,6 +2752,9 @@ function EventHistoryPanel({
         setHistoryRows((current) => [...current, ...response.items]);
       }
       setHistoryCursor(response.nextCursor);
+      if (historyCategory === 'comment' && response.items.length) {
+        onCommentHistoryLoaded?.(response.items.length);
+      }
     } catch (reason) {
       if (historyRequestSeqRef.current === requestSeq) {
         setHistoryError(reason instanceof Error ? reason.message : '读取历史消息失败');
@@ -3342,12 +3375,16 @@ export default function App() {
     noise: number;
     uniqueKeyDuplicate: number;
     duplicate: number;
+    displayedInMainWindow: number;
+    mainWindowTrimmed: number;
     skipped?: DisplaySkipDiagnostic[];
   }) => {
     frontendDiagnosticsRef.current.displayCategoryMismatch += diagnostics.categoryMismatch;
     frontendDiagnosticsRef.current.displayNoise += diagnostics.noise;
     frontendDiagnosticsRef.current.displayUniqueKeyDuplicate += diagnostics.uniqueKeyDuplicate;
     frontendDiagnosticsRef.current.displayDuplicate += diagnostics.duplicate;
+    frontendDiagnosticsRef.current.displayedInMainWindow = diagnostics.displayedInMainWindow;
+    frontendDiagnosticsRef.current.mainWindowTrimmed += diagnostics.mainWindowTrimmed;
     if (diagnostics.skipped?.length) {
       recentSkippedCommentsRef.current = [...recentSkippedCommentsRef.current, ...diagnostics.skipped]
         .filter((item) => item.candidate.category === 'comment')
@@ -3541,6 +3578,10 @@ export default function App() {
 
   const queueStatsRefreshRef = useRef<(() => void) | null>(null);
 
+  const recordCommentHistoryLoaded = useStableEvent((count: number) => {
+    frontendDiagnosticsRef.current.historyQueryable += count;
+  });
+
   useEffect(() => {
     const unsubscribe = desktopWindowApi?.onMoveStateChange?.(({ moving }) => {
       windowMovingRef.current = moving;
@@ -3717,6 +3758,7 @@ export default function App() {
       api.getEvents('gift', targetSessionId),
     ]);
     frontendDiagnosticsRef.current.historyCommentBackfill += comments.items.length;
+    frontendDiagnosticsRef.current.historyQueryable += comments.items.length;
 
     const keepAfterClear = (items: LiveEvent[]) => {
       if (!clearedAt) {
@@ -4028,6 +4070,11 @@ export default function App() {
       displayWindow: {
         commentStatsMinusDisplay: Math.max(0, stats.comments - events.comment.length),
         commentSseMinusDisplay: Math.max(0, frontendDiagnosticsRef.current.sseCommentRows - events.comment.length),
+        commentDisplayedInMainWindow: frontendDiagnosticsRef.current.displayedInMainWindow,
+        commentMainWindowTrimmed: frontendDiagnosticsRef.current.mainWindowTrimmed,
+        commentHistoryQueryable: frontendDiagnosticsRef.current.historyQueryable,
+        commentHiddenByMainWindowLimit:
+          frontendDiagnosticsRef.current.mainWindowTrimmed > 0 && frontendDiagnosticsRef.current.historyQueryable > 0,
         commentDisplayLimitReached: events.comment.length >= EVENT_LIMITS.comment,
       },
       ui: {
@@ -4344,6 +4391,7 @@ export default function App() {
         open={historyPanelOpen}
         onClose={() => setHistoryPanelOpen(false)}
         highlightUsers={compiledHighlightUsers}
+        onCommentHistoryLoaded={recordCommentHistoryLoaded}
       />
 
     </main>

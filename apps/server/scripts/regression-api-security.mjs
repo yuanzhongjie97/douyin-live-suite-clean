@@ -78,6 +78,16 @@ assert.equal(
   'live room URLs should normalize to stable https live.douyin.com room URLs',
 );
 assert.equal(
+  security.normalizeAllowedDouyinLiveUrl('https://live.douyin.com/5200nono?foo=bar#x'),
+  'https://live.douyin.com/5200nono',
+  'live room vanity paths with letters and numbers should normalize to stable https live.douyin.com URLs',
+);
+assert.equal(
+  security.normalizeAllowedDouyinEntryUrl('https://live.douyin.com/5200nono'),
+  'https://live.douyin.com/5200nono',
+  'login entry should allow live.douyin.com vanity paths',
+);
+assert.equal(
   security.normalizeAllowedDouyinEntryUrl('https://www.douyin.com/'),
   'https://www.douyin.com',
   'login entry should allow the Douyin home page',

@@ -588,6 +588,7 @@ type HighlightEventMatch = {
   user: HighlightUserConfig;
   matchedBy: string;
   matchedValue: string;
+  source: 'event' | 'payload' | 'identity_cache_backfill';
 };
 
 function getHighlightEventMatch(event: LiveEvent, user: HighlightUserConfig): HighlightEventMatch | undefined {
@@ -599,15 +600,18 @@ function getHighlightEventMatch(event: LiveEvent, user: HighlightUserConfig): Hi
   let payloadUserId: string | undefined;
   let payloadUserLink: string | undefined;
   let payloadLinkUserId: string | undefined;
+  let identityBackfilled = false;
   try {
     const payload = event.payloadJson ? (JSON.parse(event.payloadJson) as RawCollectorEvent) : undefined;
     payloadUserId = normalizeWhitespace(payload?.userId);
     payloadUserLink = normalizeWhitespace(payload?.userLink);
     payloadLinkUserId = extractDouyinUserId(payload?.userLink);
+    identityBackfilled = payload?.identityBackfillSource === 'identity_cache';
   } catch {
     payloadUserId = undefined;
     payloadUserLink = undefined;
     payloadLinkUserId = undefined;
+    identityBackfilled = false;
   }
   const candidates: Array<{ matchedBy: string; value?: string }> = [
     { matchedBy: 'event.userId', value: event.userId },
@@ -624,6 +628,11 @@ function getHighlightEventMatch(event: LiveEvent, user: HighlightUserConfig): Hi
         user,
         matchedBy: candidate.matchedBy,
         matchedValue: normalized,
+        source: identityBackfilled && candidate.matchedBy.startsWith('event.')
+          ? 'identity_cache_backfill'
+          : candidate.matchedBy.startsWith('payload.')
+            ? 'payload'
+            : 'event',
       };
     }
   }
@@ -1919,6 +1928,10 @@ export class CaptureService {
         giftName: parsed.giftName ?? raw.giftName,
         giftCount: normalizedGift.giftCount ?? raw.giftCount,
       };
+      if (category === 'gift' && knownIdentity && (!rawUserId || !rawUserLink) && (knownUserId || knownLinkUserId || knownIdentity.userLink)) {
+        payloadForStorage.identityBackfillSource = 'identity_cache';
+        payloadForStorage.identityBackfillMatchedName = resolvedUserName;
+      }
       const payloadJson =
         category === 'comment'
           ? JSON.stringify({
@@ -2245,6 +2258,7 @@ export class CaptureService {
           remark: match.user.remark || match.user.userId,
           matchedBy: match.matchedBy,
           matchedValue: match.matchedValue,
+          source: match.source,
           message: row.message,
         });
       } else {
@@ -2258,6 +2272,7 @@ export class CaptureService {
           remark: match.user.remark || match.user.userId,
           matchedBy: match.matchedBy,
           matchedValue: match.matchedValue,
+          source: match.source,
           message: row.message,
         });
       }
@@ -2444,10 +2459,61 @@ export class CaptureService {
   ): { userId?: string; userLink?: string } | undefined {
     const lookupNames = getKnownIdentityLookupNames(input);
     for (const lookupName of lookupNames) {
-      const knownIdentity = this.db.getLatestKnownUserIdentity(sessionId, lookupName, roomId);
-      if (knownIdentity) {
-        return knownIdentity;
+      const identityState = this.db.getKnownUserIdentityState(sessionId, lookupName, roomId);
+      if (identityState.status === 'clean') {
+        commentDiagnostics.record({
+          stage: 'service.row',
+          reason: 'gift.identity_cache_backfill',
+          sessionId,
+          category: 'gift',
+          message: input.message,
+          rawText: input.rawText,
+          userName: lookupName,
+          userId: identityState.userId,
+          userLink: identityState.userLink,
+          extra: {
+            roomId,
+            matchedName: lookupName,
+            identityKeys: identityState.identityKeys,
+          },
+        });
+        return {
+          userId: identityState.userId,
+          userLink: identityState.userLink,
+        };
       }
+      if (identityState.status === 'conflict') {
+        commentDiagnostics.record({
+          stage: 'service.row',
+          reason: 'gift.identity_conflict',
+          sessionId,
+          category: 'gift',
+          message: input.message,
+          rawText: input.rawText,
+          userName: lookupName,
+          extra: {
+            roomId,
+            matchedName: lookupName,
+            identityKeys: identityState.identityKeys,
+          },
+        });
+        return undefined;
+      }
+    }
+    if (lookupNames.length) {
+      commentDiagnostics.record({
+        stage: 'service.row',
+        reason: 'gift.pending_identity',
+        sessionId,
+        category: 'gift',
+        message: input.message,
+        rawText: input.rawText,
+        userName: lookupNames[0],
+        extra: {
+          roomId,
+          lookupNames,
+        },
+      });
     }
     return undefined;
   }

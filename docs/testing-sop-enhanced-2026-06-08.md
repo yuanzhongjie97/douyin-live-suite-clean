@@ -78,6 +78,52 @@
   4. Old in-flight history requests are ignored after category or search changes.
   5. The realtime panels do not load all history rows into `events.comment` or `events.gift`.
 
+## 2026-06-18 Additional SOP: P0 Display Ledger and Gift Identity Backfill
+
+### TC-WEB-018 Main-window ledger with DB history traceability
+
+- Priority: P0
+- Requirement: The main comment panel remains capped at 200 rows, but copied diagnostics must prove whether older comments are hidden by the realtime window or truly missing.
+- Steps:
+  1. Use mock data to create more than 200 persisted comments in one session.
+  2. Open the app and keep the realtime comment panel bounded at 200 rows.
+  3. Open history query, search an older comment, and load the matching page from DB-backed history.
+  4. Copy diagnostics.
+- Expected Results:
+  1. `displayedInMainWindow` reports the current main-window comment count.
+  2. `mainWindowTrimmed` is greater than 0 when the main 200-row window trims older comments.
+  3. `historyQueryable` increases when DB-backed comment history is loaded.
+  4. A comment present in DB/history but trimmed from the main window is classified as window trimming, not data loss.
+
+### TC-HL-014 Gift remark identity-cache backfill
+
+- Priority: P0
+- Requirement: If the same session/room has already built a clean stable identity mapping from comment/entry/interaction, a later gift with the same display name but no direct identity may backfill identity from that cache.
+- Steps:
+  1. Configure `highlight_users.txt` with a stable sec_uid and remark.
+  2. Send a comment from display name `A` with matching `userId/userLink`.
+  3. Send a gift from display name `A` without `userId/userLink`.
+  4. Inspect DB row, realtime gift row, history gift row, and copied diagnostics.
+- Expected Results:
+  1. The gift DB row is updated with cached `userId/userLink`.
+  2. The realtime gift row and history gift row both show `特别关注 备注名` while正文用户名仍显示原昵称.
+  3. Highlight diagnostics include `source: identity_cache_backfill`, `matchedBy`, and `matchedValue`.
+  4. The same gift `uniqueKey` is replaced/recomputed, not duplicated.
+
+### TC-HL-015 Same-name identity conflict must not backfill
+
+- Priority: P0
+- Requirement: Pure nickname fallback remains disabled. If one display name maps to multiple stable identities in the same session/room, gifts without direct identity must not show a remark.
+- Steps:
+  1. Send two stable-identity comments with the same display name but different `userId/userLink`.
+  2. Send a gift with that display name and no stable identity.
+  3. Inspect DB, realtime/history gift display, and diagnostics.
+- Expected Results:
+  1. The gift persists for DB/history/export traceability.
+  2. The gift does not backfill `userId/userLink`.
+  3. No special-follow remark is shown for that gift.
+  4. Diagnostics include `gift.identity_conflict`.
+
 ```powershell
 npm run test:regression
 npm run audit:security

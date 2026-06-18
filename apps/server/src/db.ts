@@ -26,6 +26,12 @@ const MAX_EVENTS_PER_SESSION = 50000;
 const EVENT_RETENTION_PRUNE_BATCH = 3000;
 const IDENTITY_CACHE_CONFIDENCE = 90;
 type KnownUserIdentity = { userId?: string; userLink?: string };
+export type KnownUserIdentityLookupState = {
+  status: 'clean' | 'conflict' | 'pending';
+  userId?: string;
+  userLink?: string;
+  identityKeys: string[];
+};
 type EventPayloadIdentity = {
   userName?: string;
   userId?: string;
@@ -1185,9 +1191,25 @@ export class AppDatabase {
     userName: string,
     roomId?: string,
   ): KnownUserIdentity | undefined {
+    const state = this.getKnownUserIdentityState(sessionId, userName, roomId);
+    if (state.status !== 'clean') {
+      return undefined;
+    }
+
+    return {
+      userId: state.userId,
+      userLink: state.userLink,
+    };
+  }
+
+  getKnownUserIdentityState(
+    sessionId: string,
+    userName: string,
+    roomId?: string,
+  ): KnownUserIdentityLookupState {
     const normalizedUserName = normalizeObservedName(userName);
     if (!normalizedUserName) {
-      return undefined;
+      return { status: 'pending', identityKeys: [] };
     }
 
     const variants = Array.from(
@@ -1199,32 +1221,32 @@ export class AppDatabase {
     );
 
     for (const variant of variants) {
-      const bySession = this.findCachedKnownUserIdentity('session', sessionId, variant);
-      if (bySession) {
+      const bySession = this.findCachedKnownUserIdentityState('session', sessionId, variant);
+      if (bySession.status === 'clean' || bySession.status === 'conflict') {
         return bySession;
       }
     }
 
     if (roomId) {
       for (const variant of variants) {
-        const byRoom = this.findCachedKnownUserIdentity('room', roomId, variant);
-        if (byRoom) {
+        const byRoom = this.findCachedKnownUserIdentityState('room', roomId, variant);
+        if (byRoom.status === 'clean' || byRoom.status === 'conflict') {
           return byRoom;
         }
       }
     }
 
-    return undefined;
+    return { status: 'pending', identityKeys: [] };
   }
 
-  private findCachedKnownUserIdentity(
+  private findCachedKnownUserIdentityState(
     scopeType: 'session' | 'room',
     scopeId: string,
     userName: string,
-  ): KnownUserIdentity | undefined {
+  ): KnownUserIdentityLookupState {
     const normalizedName = normalizeObservedName(userName);
     if (!normalizedName || !scopeId) {
-      return undefined;
+      return { status: 'pending', identityKeys: [] };
     }
 
     const rows = this.db
@@ -1255,23 +1277,28 @@ export class AppDatabase {
       rows.map((row) => normalizeOptionalText(row.identityKey)).filter((value): value is string => Boolean(value)),
     );
     if (identityKeys.size !== 1) {
-      return undefined;
+      return {
+        status: identityKeys.size > 1 ? 'conflict' : 'pending',
+        identityKeys: Array.from(identityKeys),
+      };
     }
 
     const row = rows[0];
     const userId = normalizeOptionalText(row?.userId);
     const userLink = normalizeOptionalText(row?.userLink);
     if (!userId && !userLink) {
-      return undefined;
+      return { status: 'pending', identityKeys: Array.from(identityKeys) };
     }
 
     return {
+      status: 'clean',
       userId,
       userLink:
         userLink ||
         (userId && isDirectDouyinUserId(userId)
           ? `https://www.douyin.com/user/${encodeURIComponent(userId)}`
           : undefined),
+      identityKeys: Array.from(identityKeys),
     };
   }
 

@@ -950,3 +950,74 @@ Release status:
 - Do not package or publish this pass until the audit high items are cleared or separately accepted by the user as a dependency-upgrade task.
 - A non-force upgrade attempt was investigated, but it did not converge cleanly in this pass; the partial dependency changes were reverted to avoid mixing an unstable build-chain upgrade into the history-query feature.
 - Git cleanliness checks are still required before commit and push to confirm no installer, log, DB, cache, or build artifact is tracked.
+
+## 29. 2026-06-18 P0 Display Ledger and Gift Identity Backfill Retest
+
+Purpose:
+- Root-cause the recurring user-facing symptoms: comment appears lost in the message area, and gift rows lose special-follow remarks.
+- Keep realtime performance limits unchanged: main comments 200, gifts 120.
+- Treat DB-backed history query and copied diagnostics as the formal retained-history evidence path.
+
+Implemented scope:
+
+| Area | Result |
+| --- | --- |
+| Frontend diagnostics | Added `displayedInMainWindow`, `mainWindowTrimmed`, and `historyQueryable` to distinguish main-window trimming from real data loss |
+| History evidence | DB-backed dashboard/history loads now increase comment history traceability counters |
+| Gift identity backfill | Gifts without direct identity can use same-session/same-room clean identity cache from earlier stable-identity events |
+| Highlight diagnostics | Cache-backed gift remarks now include `source: identity_cache_backfill`, plus `matchedBy/matchedValue` |
+| Conflict handling | Same display name mapped to multiple stable identities does not backfill and records `gift.identity_conflict` |
+| Unchanged boundaries | 50,000 raw detail retention, comments 200, gifts 120, no pure nickname fallback, no packaging in this pass |
+
+Targeted execution result:
+
+| Check | Result |
+| --- | --- |
+| `node apps/web/scripts/regression-comment-display-loss.mjs` | PASS |
+| `node --import tsx apps/server/scripts/regression-capture-integrity-strong-mock.mjs` | PASS |
+| `npm run test:server` | PASS: server 33 scripts |
+| `npm run test:web` | PASS: web 17 scripts |
+| `npm run test:regression` | PASS: server 33, web 17, desktop 6 |
+| `npm run audit:security` | PASS for high gate; remaining `esbuild` low and `uuid` moderate via `exceljs` are not high |
+
+Full gate status:
+- Full regression and high-level security audit passed after implementation and non-force `npm audit fix`.
+- Real-room smoke remains useful evidence but does not replace the mock gates for duplicate/comment/remark boundaries.
+- No installer was packaged in this pass.
+
+## 30. 2026-06-18 V26.6.18.1 Packaging Verification
+
+Purpose:
+- Package the P0 display-ledger and gift identity-cache-backfill fixes for user manual testing.
+- Keep the GitHub repository source-only; the installer is a local release artifact and is not committed.
+
+Version:
+
+| Item | Value |
+| --- | --- |
+| Visible version | `V26.6.18.1` |
+| npm semver | `26.6.18-1` |
+| Version rule | 2026-06-18 first package, following `VYY.M.D.N` |
+
+Execution result:
+
+| Check | Result |
+| --- | --- |
+| `node apps/desktop/scripts/regression-release-version.cjs` | PASS |
+| `npm run audit:security` | PASS for high gate; remaining `esbuild` low and `uuid` moderate via `exceljs` |
+| `npm run test:regression` | PASS: server 33, web 17, desktop 6 |
+| `npm run desktop:pack:fast` | PASS; packaged native ABI gate passed during packaging |
+
+Release artifact:
+
+| Item | Value |
+| --- | --- |
+| Installer | `C:\Users\85855\PycharmProjects\PythonProject\douyin-live-suite-clean\apps\desktop\release\糖三角-V26.6.18.1-安装包.exe` |
+| Size | `85,330,483` bytes |
+| SHA256 | `DE053F97CC8BC4A712DD9739B7D315FB25A5E7D8B4EBFD83EA3889CB406376A0` |
+| Release directory cleanup | PASS: no `win-unpacked` directory remains |
+
+Notes:
+- Packaging initially detected the expected Node ABI 127 versus Electron ABI 143 mismatch, then rebuilt `better-sqlite3` for Electron and passed the packaged native ABI gate.
+- A manual rerun of `regression-packaged-native-abi.cjs --required` after finalization is not applicable because the finalizer removes `win-unpacked`; the gate already passed inside `desktop:pack:fast`.
+- Final installed-app smoke and real-room acceptance remain user拍板.

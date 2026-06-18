@@ -120,5 +120,25 @@ assert.match(
   /stream\.onerror\s*=\s*\(\)\s*=>\s*\{[\s\S]*?loadDashboard\(\{\s*includeEvents:\s*true\s*\}\)/u,
   'SSE error fallback should pull events, not only runtime and stats',
 );
+assert.match(
+  appSource,
+  /mainWindowTrimmed:\s*0/u,
+  'frontend diagnostics must track comments trimmed from the main realtime window',
+);
+assert.match(
+  appSource,
+  /historyQueryable:\s*0/u,
+  'frontend diagnostics must track comments known to be queryable through DB-backed history',
+);
+assert.match(
+  appSource,
+  /displayedInMainWindow:\s*0/u,
+  'frontend diagnostics must track comments displayed in the main realtime window',
+);
+assert.match(
+  appSource,
+  /historyCommentBackfill/u,
+  'frontend diagnostics must retain DB/history backfill evidence for comment traceability',
+);
 
 console.log('web comment display loss regression checks passed');
