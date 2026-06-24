@@ -20,6 +20,13 @@ export interface InsertEventsResult {
   insertedIndexes: Set<number>;
 }
 
+export interface PendingGiftIdentityBackfillQuery {
+  sessionId: string;
+  roomId?: string;
+  userName: string;
+  limit?: number;
+}
+
 const MYSTERY_PERSON_LABEL = '\u795E\u79D8\u4EBA';
 const MYSTERY_KING_LABEL = '\u795E\u79D8\u738B\u8005';
 const MAX_EVENTS_PER_SESSION = 50000;
@@ -668,6 +675,68 @@ export class AppDatabase {
     });
 
     tx(events);
+  }
+
+  getPendingGiftIdentityBackfillCandidates(query: PendingGiftIdentityBackfillQuery): LiveEvent[] {
+    const normalizedUserName = normalizeObservedName(query.userName);
+    const sessionId = normalizeOptionalText(query.sessionId);
+    if (!normalizedUserName || !sessionId) {
+      return [];
+    }
+
+    const limit = Math.min(Math.max(query.limit ?? 120, 1), 500);
+    const clauses = [
+      'session_id = ?',
+      "category = 'gift'",
+      "NULLIF(COALESCE(user_id, ''), '') IS NULL",
+      "NULLIF(COALESCE(user_link, ''), '') IS NULL",
+      `(
+        user_name = ?
+        OR (json_valid(payload_json) AND json_extract(payload_json, '$.userName') = ?)
+        OR message LIKE ?
+        OR (json_valid(payload_json) AND json_extract(payload_json, '$.rawText') LIKE ?)
+        OR (json_valid(payload_json) AND json_extract(payload_json, '$.text') LIKE ?)
+      )`,
+    ];
+    const args: Array<string | number> = [
+      sessionId,
+      normalizedUserName,
+      normalizedUserName,
+      `%${normalizedUserName}%`,
+      `%${normalizedUserName}%`,
+      `%${normalizedUserName}%`,
+    ];
+
+    if (query.roomId) {
+      clauses.push('(room_id = ? OR room_id IS NULL OR room_id = \'\')');
+      args.push(query.roomId);
+    }
+
+    args.push(limit);
+    return this.db
+      .prepare(`
+        SELECT
+          id,
+          unique_key AS uniqueKey,
+          session_id AS sessionId,
+          category,
+          created_at AS createdAt,
+          room_id AS roomId,
+          room_title AS roomTitle,
+          host_name AS hostName,
+          user_name AS userName,
+          user_id AS userId,
+          user_link AS userLink,
+          message,
+          gift_name AS giftName,
+          gift_count AS giftCount,
+          payload_json AS payloadJson
+        FROM events
+        WHERE ${clauses.join(' AND ')}
+        ORDER BY created_at DESC, id DESC
+        LIMIT ?
+      `)
+      .all(...args) as LiveEvent[];
   }
 
   upsertUserIdentityObservation(observation: UserIdentityObservation): void {

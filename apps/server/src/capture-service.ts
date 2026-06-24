@@ -354,6 +354,8 @@ function mergeGiftIdentityIntoEvent(target: LiveEvent, candidate: LiveEvent): Li
     userLink: mergedUserLink,
     giftName: candidate.giftName || candidatePayload.giftName || target.giftName || targetPayload.giftName,
     giftCount: candidate.giftCount || candidatePayload.giftCount || target.giftCount || targetPayload.giftCount,
+    identityBackfillSource: candidatePayload.identityBackfillSource || targetPayload.identityBackfillSource,
+    identityBackfillMatchedName: candidatePayload.identityBackfillMatchedName || targetPayload.identityBackfillMatchedName,
   };
   Object.assign(target, {
     userName: mergedUserName,
@@ -844,7 +846,7 @@ function isUnsafeGiftIdentityFallbackName(value: string | undefined): boolean {
     /(?:贡献用户|贡献排名|在线观众\s*top\s*\d+)/iu.test(normalized);
 }
 
-function isSafeIdentityCacheName(value: string | undefined): boolean {
+function isSafeIdentityCacheName(value: string | undefined): value is string {
   const normalized = normalizeWhitespace(value);
   if (!normalized || normalized.length > 40 || /^\d+$/u.test(normalized)) {
     return false;
@@ -858,6 +860,14 @@ function getKnownIdentityLookupNames(input: {
   message?: string;
 }): string[] {
   return collectUserLookupNames(input).filter((name) => !isUnsafeGiftIdentityFallbackName(name));
+}
+
+function buildPendingGiftIdentityNameKey(sessionId: string, roomId: string | undefined, userName: string): string {
+  return [
+    normalizeWhitespace(sessionId),
+    normalizeWhitespace(roomId) || '__unknown_room__',
+    normalizeWhitespace(userName),
+  ].join('|');
 }
 
 function buildIdentityObservationKey(input: {
@@ -901,6 +911,7 @@ export class CaptureService {
   private liveStatsUserKeys = new Set<string>();
   private eventPersistQueue: Promise<void> = Promise.resolve();
   private identityObservationKeys = new Set<string>();
+  private pendingGiftIdentityNameKeys = new Set<string>();
   private highlightMatchDiagnosticKeys = new Set<string>();
   private lastCollectorDuplicateReason: string | undefined;
   private collectorEventSequence = 0;
@@ -951,6 +962,7 @@ export class CaptureService {
     this.liveStats = createEmptyLiveStats(session.id);
     this.liveStatsUserKeys.clear();
     this.identityObservationKeys.clear();
+    this.pendingGiftIdentityNameKeys.clear();
     this.room = {
       url: targetUrl,
       roomId: session.roomId,
@@ -1898,6 +1910,21 @@ export class CaptureService {
         if (!this.identityObservationKeys.has(identityObservationKey)) {
           this.identityObservationKeys.add(identityObservationKey);
           this.db.upsertUserIdentityObservation(identityObservation);
+          if (category !== 'gift') {
+            this.backfillInBatchGiftIdentities(rows, sessionId, room?.roomId, {
+              userName: resolvedUserName,
+              userId: rawUserId,
+              userLink: rawUserLink,
+              observedAt: createdAt,
+            });
+            const backfilledGifts = this.backfillPendingGiftIdentities(sessionId, room?.roomId, {
+              userName: resolvedUserName,
+              userId: rawUserId,
+              userLink: rawUserLink,
+              observedAt: createdAt,
+            });
+            giftIdentityUpdates.push(...backfilledGifts);
+          }
         }
       }
       let knownIdentity: { userId?: string; userLink?: string } | undefined;
@@ -2214,6 +2241,7 @@ export class CaptureService {
     this.liveStats = null;
     this.liveStatsUserKeys.clear();
     this.identityObservationKeys.clear();
+    this.pendingGiftIdentityNameKeys.clear();
     this.room = null;
     this.autoStoppingForRoomEnd = false;
     this.recentCollectorFingerprints.clear();
@@ -2501,6 +2529,9 @@ export class CaptureService {
       }
     }
     if (lookupNames.length) {
+      for (const lookupName of lookupNames) {
+        this.pendingGiftIdentityNameKeys.add(buildPendingGiftIdentityNameKey(sessionId, roomId, lookupName));
+      }
       commentDiagnostics.record({
         stage: 'service.row',
         reason: 'gift.pending_identity',
@@ -2516,6 +2547,211 @@ export class CaptureService {
       });
     }
     return undefined;
+  }
+
+  private backfillInBatchGiftIdentities(
+    rows: LiveEvent[],
+    sessionId: string,
+    roomId: string | undefined,
+    identity: {
+      userName: string;
+      userId?: string;
+      userLink?: string;
+      observedAt: string;
+    },
+  ): LiveEvent[] {
+    const lookupName = normalizeWhitespace(identity.userName);
+    if (!isSafeIdentityCacheName(lookupName)) {
+      return [];
+    }
+    const pendingKey = buildPendingGiftIdentityNameKey(sessionId, roomId, lookupName);
+    if (!this.pendingGiftIdentityNameKeys.has(pendingKey)) {
+      return [];
+    }
+
+    const identityState = this.db.getKnownUserIdentityState(sessionId, lookupName, roomId);
+    if (identityState.status !== 'clean') {
+      return [];
+    }
+
+    const userId = normalizeWhitespace(identityState.userId || identity.userId);
+    const linkUserId = extractDouyinUserId(identityState.userLink || identity.userLink);
+    const resolvedUserId = userId || linkUserId;
+    const resolvedUserLink = normalizeDouyinProfileUrl(identityState.userLink || identity.userLink, resolvedUserId);
+    if (!resolvedUserId && !resolvedUserLink) {
+      return [];
+    }
+
+    const updates: LiveEvent[] = [];
+    for (const row of rows) {
+      if (row.category !== 'gift' || row.sessionId !== sessionId || row.userId || row.userLink) {
+        continue;
+      }
+      if (roomId && row.roomId && row.roomId !== roomId) {
+        continue;
+      }
+
+      const payload = readEventPayload(row) ?? ({} as RawCollectorEvent);
+      const rowLookupNames = getKnownIdentityLookupNames({
+        userName: row.userName || payload.userName,
+        rawText: payload.rawText,
+        message: row.message || payload.text,
+      });
+      if (!rowLookupNames.includes(lookupName)) {
+        continue;
+      }
+
+      const mergedPayload: RawCollectorEvent = {
+        ...payload,
+        category: 'gift',
+        text: payload.text || row.message,
+        rawText: payload.rawText,
+        sourceId: payload.sourceId,
+        userName: row.userName || payload.userName || lookupName,
+        userId: resolvedUserId || payload.userId,
+        userLink: resolvedUserLink || payload.userLink,
+        giftName: row.giftName || payload.giftName,
+        giftCount: row.giftCount || payload.giftCount,
+        identityBackfillSource: 'identity_cache',
+        identityBackfillMatchedName: lookupName,
+        ingestSeq: payload.ingestSeq,
+        collectorTraceId: payload.collectorTraceId,
+        collectorObservedAt: payload.collectorObservedAt,
+        collectorSource: payload.collectorSource,
+        domRevision: payload.domRevision,
+      };
+      Object.assign(row, {
+        userName: row.userName || payload.userName || lookupName,
+        userId: resolvedUserId || row.userId,
+        userLink: resolvedUserLink || row.userLink,
+        payloadJson: JSON.stringify(mergedPayload),
+      });
+      updates.push(row);
+      commentDiagnostics.record({
+        stage: 'service.row',
+        reason: 'gift.pending_identity_backfilled',
+        sessionId,
+        category: 'gift',
+        sourceId: payload.sourceId,
+        uniqueKey: row.uniqueKey,
+        message: row.message,
+        rawText: payload.rawText,
+        userName: lookupName,
+        userId: row.userId,
+        userLink: row.userLink,
+        extra: {
+          roomId,
+          observedAt: identity.observedAt,
+          identityKeys: identityState.identityKeys,
+          inBatch: true,
+        },
+      });
+    }
+
+    return updates;
+  }
+
+  private backfillPendingGiftIdentities(
+    sessionId: string,
+    roomId: string | undefined,
+    identity: {
+      userName: string;
+      userId?: string;
+      userLink?: string;
+      observedAt: string;
+    },
+  ): LiveEvent[] {
+    const lookupName = normalizeWhitespace(identity.userName);
+    if (!isSafeIdentityCacheName(lookupName)) {
+      return [];
+    }
+    const pendingKey = buildPendingGiftIdentityNameKey(sessionId, roomId, lookupName);
+    if (!this.pendingGiftIdentityNameKeys.has(pendingKey)) {
+      return [];
+    }
+
+    const identityState = this.db.getKnownUserIdentityState(sessionId, lookupName, roomId);
+    if (identityState.status !== 'clean') {
+      return [];
+    }
+
+    const userId = normalizeWhitespace(identityState.userId || identity.userId);
+    const linkUserId = extractDouyinUserId(identityState.userLink || identity.userLink);
+    const resolvedUserId = userId || linkUserId;
+    const resolvedUserLink = normalizeDouyinProfileUrl(identityState.userLink || identity.userLink, resolvedUserId);
+    if (!resolvedUserId && !resolvedUserLink) {
+      return [];
+    }
+
+    const candidates = this.db.getPendingGiftIdentityBackfillCandidates({
+      sessionId,
+      roomId,
+      userName: lookupName,
+      limit: 200,
+    });
+    const updates: LiveEvent[] = [];
+    for (const row of candidates) {
+      const payload = readEventPayload(row) ?? ({} as RawCollectorEvent);
+      const rowLookupNames = getKnownIdentityLookupNames({
+        userName: row.userName || payload.userName,
+        rawText: payload.rawText,
+        message: row.message || payload.text,
+      });
+      if (!rowLookupNames.includes(lookupName)) {
+        continue;
+      }
+
+      const mergedPayload: RawCollectorEvent = {
+        ...payload,
+        category: 'gift',
+        text: payload.text || row.message,
+        rawText: payload.rawText,
+        sourceId: payload.sourceId,
+        userName: row.userName || payload.userName || lookupName,
+        userId: resolvedUserId || payload.userId,
+        userLink: resolvedUserLink || payload.userLink,
+        giftName: row.giftName || payload.giftName,
+        giftCount: row.giftCount || payload.giftCount,
+        identityBackfillSource: 'identity_cache',
+        identityBackfillMatchedName: lookupName,
+        ingestSeq: payload.ingestSeq,
+        collectorTraceId: payload.collectorTraceId,
+        collectorObservedAt: payload.collectorObservedAt,
+        collectorSource: payload.collectorSource,
+        domRevision: payload.domRevision,
+      };
+      const updated: LiveEvent = {
+        ...row,
+        userName: row.userName || payload.userName || lookupName,
+        userId: resolvedUserId || row.userId,
+        userLink: resolvedUserLink || row.userLink,
+        payloadJson: JSON.stringify(mergedPayload),
+      };
+      updates.push(updated);
+      commentDiagnostics.record({
+        stage: 'service.row',
+        reason: 'gift.pending_identity_backfilled',
+        sessionId,
+        category: 'gift',
+        sourceId: payload.sourceId,
+        uniqueKey: row.uniqueKey,
+        message: row.message,
+        rawText: payload.rawText,
+        userName: lookupName,
+        userId: updated.userId,
+        userLink: updated.userLink,
+        extra: {
+          roomId,
+          observedAt: identity.observedAt,
+          identityKeys: identityState.identityKeys,
+        },
+      });
+    }
+
+    if (updates.length || candidates.length === 0) {
+      this.pendingGiftIdentityNameKeys.delete(pendingKey);
+    }
+    return updates;
   }
 
   private normalizeGiftComboDelta(raw: RawCollectorEvent, parsed: {

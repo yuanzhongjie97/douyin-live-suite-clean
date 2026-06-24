@@ -1000,3 +1000,131 @@ node apps\desktop\scripts\run-regressions.cjs
 | `npm run desktop:pack:fast` | PASS：生成 `糖三角-V26.6.12.1-安装包.exe`，packaged native ABI 门禁通过 |
 | 安装包 SHA256 | `3AE6D269F9A90BEB52585649C131C7E47A9D822A7D16D294555FDFCA3B71CEEB` |
 | 300 秒真实 smoke | PASS：raw events 268、raw comments 90、persisted comments 18、entries 126、四类 visible/page observer `unmatchedCount=0` |
+
+## 2026-06-23 Additional SOP: P0 comment trace and gift remark backfill
+
+### TC-CAP-022_DOM revision trace must not affect comment dedupe
+
+- Priority: P0
+- Requirement: Collector payloads must include `collectorTraceId`, `collectorObservedAt`, `collectorSource`, and `domRevision`, but those fields must not participate in business duplicate suppression.
+- Steps:
+  1. Run `node apps/server/scripts/regression-collector-dom-revision-trace.mjs`.
+  2. Cover same DOM/sourceId rescans and DOM revision changes.
+  3. Check that `makeElementFingerprint()` does not include trace, time, source, or revision fields.
+- Expected Results:
+  1. Payloads carry trace fields for diagnostics.
+  2. The same visible comment is not duplicated just because trace fields changed.
+  3. Real different comments remain separated by stable `sourceId/rawText/text/user` data or no-source collector sequence.
+
+### TC-HL-006_Gift first and identity later must backfill the remark
+
+- Priority: P0
+- Requirement: If a gift is persisted before stable `userId/userLink` is known, a later clean same-session/same-room identity observation must backfill the same gift row and allow the special-follow remark to match.
+- Steps:
+  1. Run `node --import tsx apps/server/scripts/regression-gift-pending-identity-backfill.mjs`.
+  2. Mock a gift without stable identity, then mock a later stable identity for the same display name.
+  3. Verify DB rows, SSE publication, highlight matched events, and diagnostics.
+- Expected Results:
+  1. Gift `uniqueKey/id/createdAt` stay stable; only `userId/userLink/payloadJson` are completed.
+  2. SSE republishes the same `uniqueKey` so the UI can replace the existing row and recompute remarks.
+  3. Diagnostics include `gift.pending_identity`, `gift.pending_identity_backfilled`, and `ledger.gift.identity_update_published`.
+  4. The same-batch case is covered: a gift earlier in the same collector batch is backfilled before DB insert when a later row establishes stable identity.
+  5. No pure nickname fallback is allowed when stable identity is missing or conflicted.
+
+### V26.6.23.1 execution record
+
+| Item | Result |
+| --- | --- |
+| `node apps/server/scripts/regression-collector-dom-revision-trace.mjs` | PASS |
+| `node --import tsx apps/server/scripts/regression-gift-pending-identity-backfill.mjs` | PASS |
+| `node apps/desktop/scripts/regression-release-version.cjs` | PASS |
+| `npm run test:server` | PASS: server 35 scripts |
+| `npm run test:web` | PASS: web 17 scripts |
+| `npm run test:regression` | PASS: server 35, web 17, desktop 6 |
+| `npm run audit:security` | PASS: high=0; remaining `esbuild` low and `uuid/exceljs` moderate |
+| `npm run desktop:pack:fast` | PASS: generated `糖三角-V26.6.23.1-安装包.exe`; packaged native ABI gate passed |
+| Installer SHA256 | `02620373B52934AB5D8B2410A15D6645B7FEF9DC312D8E2B2007D25A9919F111` |
+
+## 2026-06-24 Additional SOP: P0 dynamic chat root comment capture
+
+### TC-CAP-024_Late chat root short-lived comment must be captured
+
+- Priority: P0
+- Requirement: After the collector is installed, if Douyin dynamically inserts a new chat root under an existing page shell, a short-lived comment inside that new root must be captured before virtual-list removal.
+- Steps:
+  1. Run `node --import tsx apps/server/scripts/regression-collector-late-chat-root-observer.mjs`.
+  2. The mock page installs the collector first, then creates `.webcast-chatroom___list` and a comment row that is removed after 40ms.
+  3. Check the emitted collector batch.
+- Expected Results:
+  1. The comment `稳定用户：这条很快被移除的评论必须采集` appears in the batch as category `comment`.
+  2. The collector does not wait for the 250ms fallback scan to discover the new root.
+  3. This test fails if dynamically inserted chat roots are not immediately attached with chat observers.
+
+### TC-CAP-025_Dynamic root observer gate must not be removed
+
+- Priority: P0
+- Requirement: The static loss-resilience gate must prevent future regressions that revert `document.body` back to direct-child observation or remove dynamic chat-root observer attachment.
+- Steps:
+  1. Run `node --import tsx apps/server/scripts/regression-collector-loss-resilience.mjs`.
+  2. Verify the script checks `attachChatRootObserver`, `findAddedChatRoots`, and `bodyObserver.observe(document.body, { childList: true, subtree: true })`.
+- Expected Results:
+  1. The static gate passes only when late chat roots are detected and immediately observed.
+  2. Existing checks for batch retry, `characterData` observation, fast scan window, and SSE no-trim remain valid.
+
+### V26.6.24.1 execution record
+
+| Item | Result |
+| --- | --- |
+| Backup | `backups/comment-loss-20260624-160640` |
+| `node --import tsx apps/server/scripts/regression-collector-late-chat-root-observer.mjs` | RED before fix, PASS after fix |
+| `node --import tsx apps/server/scripts/regression-collector-loss-resilience.mjs` | PASS |
+| `node apps/desktop/scripts/regression-release-version.cjs` | PASS |
+| `npm run test:server` | PASS: server 36 scripts |
+| `npm run test:web` | PASS: web 17 scripts |
+| `npm run test:regression` | PASS: server 36, web 17, desktop 6 |
+| `npm run audit:security` | PASS for high gate; remaining `esbuild` low and `uuid/exceljs` moderate |
+| `npm run desktop:pack:fast` | PASS: generated `糖三角-V26.6.24.1-安装包.exe`; packaged native ABI gate passed |
+| Installer SHA256 | `F9669BF440FEB1E344CBC76E78969D6ADCB475A9B270CA63905A42B0F26AD2F7` |
+
+## 2026-06-24 Additional SOP: P0 gift backfill speed gate
+
+### TC-HL-007_Stable identities without pending gifts must not scan historical gifts
+
+- Priority: P0
+- Requirement: Comments, entries, and interactions with stable identity must not trigger the expensive pending gift candidate DB query unless the current session has a same-name gift waiting for identity backfill.
+- Steps:
+  1. Run `node --import tsx apps/server/scripts/regression-gift-backfill-skip-unneeded-db-scan.mjs`.
+  2. The mock session emits 80 stable-identity comments and no pending gifts.
+  3. Count calls to `getPendingGiftIdentityBackfillCandidates()`.
+- Expected Results:
+  1. The candidate query count is `0`.
+  2. Stable identity observations are still inserted into the identity cache.
+  3. No product boundary changes: main comments 200, gifts 120, raw detail 50,000, no pure nickname fallback.
+
+### TC-HL-008_Pending gift backfill must still work after speed gate
+
+- Priority: P0
+- Requirement: The speed gate must not break the gift-first identity-later remark repair.
+- Steps:
+  1. Run `node --import tsx apps/server/scripts/regression-gift-pending-identity-backfill.mjs`.
+  2. Mock a gift without stable identity, then mock a later stable same-name identity.
+  3. Verify DB row update, SSE republish, highlight match, and diagnostics.
+- Expected Results:
+  1. The pending gift row receives `userId/userLink`.
+  2. The same `uniqueKey` is republished for UI replacement.
+  3. Diagnostics still include `gift.pending_identity`, `gift.pending_identity_backfilled`, and `ledger.gift.identity_update_published`.
+
+### V26.6.24.2 execution record
+
+| Item | Result |
+| --- | --- |
+| Backup | `C:\Users\85855\PycharmProjects\PythonProject\douyin-live-suite-clean-backups\p0-speed-20260624-171255` |
+| `node --import tsx apps/server/scripts/regression-gift-backfill-skip-unneeded-db-scan.mjs` | RED before fix, PASS after fix |
+| `node --import tsx apps/server/scripts/regression-gift-pending-identity-backfill.mjs` | PASS |
+| `npm run test:server` | PASS: server 37 scripts |
+| `npm run test:web` | PASS: web 17 scripts |
+| `npm run test:desktop` | PASS: desktop 6 scripts |
+| `npm run test:regression` | PASS: server 37, web 17, desktop 6 |
+| `npm run audit:security` | PASS for high gate; remaining `esbuild` low and `uuid/exceljs` moderate |
+| `npm run desktop:pack:fast` | PASS; packaged native ABI gate passed |
+| Installer SHA256 | `7AA634DDC6728CB1BA747D418FD540FE45F13B05C352C8035FDD953300FF151E` |

@@ -58,6 +58,10 @@ export interface RawCollectorEvent {
   rawText?: string;
   sourceId?: string;
   collectorClientId?: string;
+  collectorTraceId?: string;
+  collectorObservedAt?: string;
+  collectorSource?: string;
+  domRevision?: number;
   ingestSeq?: number;
   userName?: string;
   userId?: string;

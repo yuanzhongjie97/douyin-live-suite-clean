@@ -504,6 +504,7 @@ export class DouyinCollector {
             const coarseSeen = new Map();
             const pendingCoarseKeys = new Map();
             const digestedElements = new WeakMap();
+            const domRevisionMap = new WeakMap();
             const giftRetryCounts = new WeakMap();
             const giftElementStates = new WeakMap();
             const messageCleanupHandles = [];
@@ -1895,6 +1896,30 @@ export class DouyinCollector {
                 payload.giftName,
                 payload.giftCount,
             ].join('|');
+            const getDomRevision = (element) => {
+                if (!(element instanceof HTMLElement)) {
+                    return 0;
+                }
+                return domRevisionMap.get(element) || 0;
+            };
+            const markDomRevision = (element) => {
+                const scopedElement = findChatItemRoot(element);
+                if (!(scopedElement instanceof HTMLElement)) {
+                    return 0;
+                }
+                const nextRevision = getDomRevision(scopedElement) + 1;
+                domRevisionMap.set(scopedElement, nextRevision);
+                return nextRevision;
+            };
+            const makeCollectorTraceId = (payload, element) => [
+                payload.category,
+                payload.sourceId,
+                payload.collectorClientId,
+                payload.rawText,
+                payload.text,
+                payload.userName,
+                getDomRevision(element),
+            ].join('|');
             const makeCoarseSignature = (payload) => {
                 const coarseUserName = payload.userName || extractUserNameFromRawText(payload);
                 const coarseUserKey = coarseUserName || payload.userId || payload.userLink;
@@ -2139,6 +2164,18 @@ export class DouyinCollector {
                     userLink,
                     giftName,
                     giftCount,
+                    collectorObservedAt: new Date().toISOString(),
+                    collectorSource: 'message-bridge',
+                    domRevision: 0,
+                    collectorTraceId: [
+                        'gift',
+                        normalize(payload.msg_id || payload.msgId || payload.message_id || payload.messageId || payload.id || payload.id_str || payload.idStr || payload.common?.msg_id || payload.common?.msgId || payload.common?.message_id || payload.common?.messageId || ''),
+                        userName,
+                        userId,
+                        userLink,
+                        giftName,
+                        giftCount,
+                    ].join('|'),
                 });
             };
             const attachGiftMessageBridge = () => {
@@ -2184,11 +2221,12 @@ export class DouyinCollector {
                     return true;
                 }
                 const now = Date.now();
+                const currentDomRevision = getDomRevision(element);
                 const previous = digestedElements.get(element);
                 if (previous && previous.fingerprint === fingerprint && now - previous.at < 180000) {
                     return false;
                 }
-                digestedElements.set(element, { fingerprint, at: now });
+                digestedElements.set(element, { fingerprint, domRevision: currentDomRevision, at: now });
                 return true;
             };
             const cleanupSeen = () => {
@@ -2637,7 +2675,11 @@ export class DouyinCollector {
                     userLink: parsed.userLink,
                     giftName: parsed.giftName,
                     giftCount: parsed.giftCount,
+                    collectorObservedAt: new Date().toISOString(),
+                    collectorSource: source,
+                    domRevision: getDomRevision(scopedElement),
                 };
+                payload.collectorTraceId = makeCollectorTraceId(payload, scopedElement);
                 const giftPayloadReady = category === 'gift' ? isGiftPayloadReady(payload) : false;
                 if (category === 'gift' &&
                     !giftPayloadReady &&
@@ -2711,11 +2753,18 @@ export class DouyinCollector {
                 }
                 const observer = new MutationObserver((mutations) => {
                     for (const mutation of mutations) {
-                        mutation.addedNodes.forEach((node) => walkNode(node, source));
+                        mutation.addedNodes.forEach((node) => {
+                            if (node instanceof HTMLElement) {
+                                markDomRevision(node);
+                            }
+                            walkNode(node, source);
+                        });
                         if (mutation.target instanceof HTMLElement) {
+                            markDomRevision(mutation.target);
                             walkNode(mutation.target, source);
                         }
                         else if (mutation.target instanceof Text && mutation.target.parentElement) {
+                            markDomRevision(mutation.target.parentElement);
                             walkNode(mutation.target.parentElement, source);
                         }
                     }
@@ -2731,24 +2780,84 @@ export class DouyinCollector {
                 return observer;
             };
             const observers = [];
+            const observedChatRoots = new WeakSet();
+            const chatRootSelector = chatRootSelectors.join(',');
+            const attachChatRootObserver = (root) => {
+                if (!(root instanceof HTMLElement) || observedChatRoots.has(root)) {
+                    return;
+                }
+                const observer = attachObserver(root, 'chat');
+                if (observer) {
+                    observedChatRoots.add(root);
+                    observers.push(observer);
+                }
+                walkNode(root, 'chat');
+            };
+            const findAddedChatRoots = (node) => {
+                if (!(node instanceof HTMLElement)) {
+                    return [];
+                }
+                const roots = [];
+                const addRoot = (candidate) => {
+                    if (candidate instanceof HTMLElement && !roots.includes(candidate)) {
+                        roots.push(candidate);
+                    }
+                };
+                try {
+                    if (node.matches(chatRootSelector)) {
+                        addRoot(node);
+                    }
+                    const closestRoot = node.closest(chatRootSelector);
+                    if (closestRoot instanceof HTMLElement) {
+                        addRoot(closestRoot);
+                    }
+                    for (const child of Array.from(node.querySelectorAll(chatRootSelector))) {
+                        addRoot(child);
+                    }
+                }
+                catch {
+                    // Ignore selector failures on unstable live DOM.
+                }
+                return roots;
+            };
             const ensureGiftMessageBridge = () => {
                 attachGiftMessageBridge();
             };
             ensureGiftMessageBridge();
             const chatRoots = findChatRoots();
             for (const root of chatRoots) {
-                const observer = attachObserver(root, 'chat');
-                if (observer) {
-                    observers.push(observer);
-                }
-                walkNode(root, 'chat');
+                attachChatRootObserver(root);
             }
             const bodyObserver = new MutationObserver((mutations) => {
                 for (const mutation of mutations) {
-                    mutation.addedNodes.forEach((node) => walkNode(node, 'generic'));
+                    mutation.addedNodes.forEach((node) => {
+                        if (node instanceof HTMLElement) {
+                            markDomRevision(node);
+                            const addedChatRoots = findAddedChatRoots(node);
+                            if (addedChatRoots.length) {
+                                for (const root of addedChatRoots) {
+                                    attachChatRootObserver(root);
+                                }
+                                return;
+                            }
+                            const isTopLevelBodyMutation = mutation.target === document.body;
+                            const isLikelyMessageNode = (() => {
+                                try {
+                                    return Boolean(node.matches(chatItemSelector) || node.matches(visibleLeafSelector) || node.querySelector(chatItemSelector) || node.querySelector(visibleLeafSelector));
+                                }
+                                catch {
+                                    return false;
+                                }
+                            })();
+                            if (!isTopLevelBodyMutation && !isLikelyMessageNode) {
+                                return;
+                            }
+                        }
+                        walkNode(node, 'generic');
+                    });
                 }
             });
-            bodyObserver.observe(document.body, { childList: true, subtree: false });
+            bodyObserver.observe(document.body, { childList: true, subtree: true });
             observers.push(bodyObserver);
             const bootstrapScan = () => {
                 const roots = findChatRoots();

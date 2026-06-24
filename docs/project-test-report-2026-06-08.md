@@ -2,9 +2,9 @@
 
 生成日期：2026-06-08  
 最近更新：2026-06-09  
-当前验收版本号：`V26.6.9.2`  
+Current acceptance version: `V26.6.24.2`
 测试环境：Windows / PowerShell / Node.js `v22.16.0` / npm `10.9.2`  
-当前安装包：`C:\Users\85855\PycharmProjects\PythonProject\douyin-live-suite-clean\apps\desktop\release\糖三角-V26.6.9.2-安装包.exe`
+Current installer: see the V26.6.24.2 Release artifact section below.
 
 ## 1. 测试结论
 
@@ -1021,3 +1021,148 @@ Notes:
 - Packaging initially detected the expected Node ABI 127 versus Electron ABI 143 mismatch, then rebuilt `better-sqlite3` for Electron and passed the packaged native ABI gate.
 - A manual rerun of `regression-packaged-native-abi.cjs --required` after finalization is not applicable because the finalizer removes `win-unpacked`; the gate already passed inside `desktop:pack:fast`.
 - Final installed-app smoke and real-room acceptance remain user拍板.
+
+## 31. 2026-06-23 V26.6.23.1 P0 Comment/Gift Retest
+
+Purpose:
+- Continue root-fixing the two recurring symptoms: comment appears lost in the message area, and gift rows lose special-follow remarks for some users.
+- Keep current product boundaries unchanged: comments 200, gifts 120, retained raw detail 50,000, no pure nickname fallback.
+- Produce an installer for user manual testing after automated gates pass.
+
+Implemented scope:
+
+| Area | Result |
+| --- | --- |
+| Comment traceability | Collector payloads now include `collectorTraceId`, `collectorObservedAt`, `collectorSource`, and `domRevision` |
+| Duplicate safety | DOM revision and trace fields are not part of business duplicate suppression |
+| Gift remark backfill | Gift rows that arrived before identity can be backfilled after later clean stable identity observation |
+| SSE update | Backfilled gifts are republished with the same `uniqueKey` so the UI can replace the existing row |
+| Diagnostics | Added evidence for `gift.pending_identity`, `gift.pending_identity_backfilled`, and `ledger.gift.identity_update_published` |
+
+Execution result:
+
+| Check | Result |
+| --- | --- |
+| `node apps/server/scripts/regression-collector-dom-revision-trace.mjs` | PASS |
+| `node --import tsx apps/server/scripts/regression-gift-pending-identity-backfill.mjs` | PASS |
+| `node apps/desktop/scripts/regression-release-version.cjs` | PASS |
+| `npm run test:server` | PASS: server 35 scripts |
+| `npm run test:web` | PASS: web 17 scripts |
+| `npm run test:regression` | PASS: server 35, web 17, desktop 6 |
+| `npm run audit:security` | PASS: high=0; remaining `esbuild` low and `uuid/exceljs` moderate |
+| `npm run desktop:pack:fast` | PASS: packaged native ABI gate passed |
+
+Release artifact:
+
+| Item | Value |
+| --- | --- |
+| Version | `V26.6.23.1` / `26.6.23-1` |
+| Installer | `C:\Users\85855\PycharmProjects\PythonProject\douyin-live-suite-clean\apps\desktop\release\糖三角-V26.6.23.1-安装包.exe` |
+| Size | `85,330,997` bytes |
+| SHA256 | `02620373B52934AB5D8B2410A15D6645B7FEF9DC312D8E2B2007D25A9919F111` |
+
+Notes:
+- This pass does not change the collector entry URL allowlist, SQLite schema, statistics/export format, realtime window size, or special-follow display format.
+- Final installed-app smoke and real-room acceptance remain user approval.
+
+## 32. 2026-06-24 V26.6.24.1 P0 Dynamic Chat Root Comment Fix
+
+Purpose:
+- Address the user-reported recurrence that some message-area comments still cannot be captured.
+- Fix only the identified P0 collector-side gap: chat roots created after observer installation with comment rows removed before the fallback scan.
+- Keep product boundaries unchanged: main comments 200, gifts 120, retained raw detail 50,000, no pure nickname fallback.
+
+Root cause evidence:
+
+| Evidence | Result |
+| --- | --- |
+| New regression before fix | `regression-collector-late-chat-root-observer.mjs` failed with `events=[]` |
+| Broken layer | Collector page observer did not immediately attach chat observer to nested chat roots inserted after installation |
+| Failure mode | Short-lived comment row could disappear before the 250ms fallback scan |
+
+Implemented scope:
+
+| Area | Result |
+| --- | --- |
+| Dynamic chat roots | New chat roots are detected from body subtree mutations |
+| Observer attachment | New roots immediately receive chat `MutationObserver` and one synchronous `walkNode(root, 'chat')` scan |
+| Performance guard | Body subtree observer ignores unrelated non-message mutations unless they are top-level body mutations or likely message nodes |
+| Regression gate | Added dynamic-root mock and static loss-resilience assertions |
+
+Execution result:
+
+| Check | Result |
+| --- | --- |
+| `node --import tsx apps/server/scripts/regression-collector-late-chat-root-observer.mjs` | RED before fix, PASS after fix |
+| `node --import tsx apps/server/scripts/regression-collector-loss-resilience.mjs` | PASS |
+| `node apps/desktop/scripts/regression-release-version.cjs` | PASS |
+| `npm run test:server` | PASS: server 36 scripts |
+| `npm run test:web` | PASS: web 17 scripts |
+| `npm run test:regression` | PASS: server 36, web 17, desktop 6 |
+| `npm run audit:security` | PASS for high gate; remaining `esbuild` low and `uuid/exceljs` moderate |
+| `npm run desktop:pack:fast` | PASS; packaged native ABI gate passed |
+
+Release artifact:
+
+| Item | Value |
+| --- | --- |
+| Version | `V26.6.24.1` / `26.6.24-1` |
+| Installer | `C:\Users\85855\PycharmProjects\PythonProject\douyin-live-suite-clean\apps\desktop\release\糖三角-V26.6.24.1-安装包.exe` |
+| Size | `85,331,863` bytes |
+| SHA256 | `F9669BF440FEB1E344CBC76E78969D6ADCB475A9B270CA63905A42B0F26AD2F7` |
+
+Notes:
+- This pass does not change SQLite schema, statistics/export format, realtime window size, special-follow display format, or URL/API security boundaries.
+- Real-room acceptance remains user approval. If comment loss is still observed, collect screenshot, session ID, time point, copied diagnostics, and whether the row exists in History Query/Excel.
+
+## 33. 2026-06-24 V26.6.24.2 P0 Gift Backfill Speed Fix
+
+Purpose:
+- Address the user-reported capture-speed slowdown also seen in `糖三角-V26.6.23.1-安装包.exe`.
+- Fix the identified P0 server-side bottleneck: gift remark identity-later backfill scanned historical gift rows for every clean stable identity observation.
+- Keep product boundaries unchanged: main comments 200, gifts 120, retained raw detail 50,000, no pure nickname fallback.
+
+Root cause evidence:
+
+| Evidence | Result |
+| --- | --- |
+| Local pressure reproduction | 50,000 missing-identity gift rows made the pending gift candidate query average about 46ms, p95 about 103ms |
+| New regression before fix | `regression-gift-backfill-skip-unneeded-db-scan.mjs` failed with `80 !== 0` unnecessary pending-gift DB scans |
+| Broken layer | Server persist queue waited on repeated gift identity backfill queries before DB insert/SSE publish could continue |
+| User-visible failure mode | Collector flush waits for the server callback, so server backfill pressure appears as slower capture and slower realtime updates |
+
+Implemented scope:
+
+| Area | Result |
+| --- | --- |
+| Pending gift index | Added a session/room/name-scoped in-memory index for gifts that truly need later identity backfill |
+| Query gating | `backfillPendingGiftIdentities()` skips the expensive DB candidate query unless that index has a matching pending gift |
+| Existing behavior preserved | Gift-first identity-later rows still backfill and republish the same `uniqueKey` |
+| Regression gate | Added `regression-gift-backfill-skip-unneeded-db-scan.mjs` |
+
+Execution result:
+
+| Check | Result |
+| --- | --- |
+| `node --import tsx apps/server/scripts/regression-gift-backfill-skip-unneeded-db-scan.mjs` | RED before fix, PASS after fix |
+| `node --import tsx apps/server/scripts/regression-gift-pending-identity-backfill.mjs` | PASS |
+| `npm run test:server` | PASS: server 37 scripts |
+| `npm run test:web` | PASS: web 17 scripts |
+| `npm run test:desktop` | PASS: desktop 6 scripts |
+| `npm run test:regression` | PASS: server 37, web 17, desktop 6 |
+| `npm run audit:security` | PASS for high gate; remaining `esbuild` low and `uuid/exceljs` moderate |
+| `npm run desktop:pack:fast` | PASS; packaged native ABI gate passed |
+
+Release artifact:
+
+| Item | Value |
+| --- | --- |
+| Version | `V26.6.24.2` / `26.6.24-2` |
+| Installer | `C:\Users\85855\PycharmProjects\PythonProject\douyin-live-suite-clean\apps\desktop\release\糖三角-V26.6.24.2-安装包.exe` |
+| Size | `85,332,556` bytes |
+| SHA256 | `7AA634DDC6728CB1BA747D418FD540FE45F13B05C352C8035FDD953300FF151E` |
+
+Notes:
+- This is a capture-speed fix test package. It does not claim every real-room comment-loss DOM variant is closed.
+- No SQLite schema, statistics/export format, realtime window size, special-follow display format, or URL/API security boundary was changed.
+- Real-room acceptance remains user approval.
