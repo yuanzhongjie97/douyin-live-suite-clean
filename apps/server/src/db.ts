@@ -2,6 +2,8 @@
 import path from 'node:path';
 import Database from 'better-sqlite3';
 import type {
+  EventHistoryQuery,
+  EventHistoryResult,
   EventQuery,
   HighlightUserConfig,
   LiveEvent,
@@ -18,12 +20,25 @@ export interface InsertEventsResult {
   insertedIndexes: Set<number>;
 }
 
+export interface PendingGiftIdentityBackfillQuery {
+  sessionId: string;
+  roomId?: string;
+  userName: string;
+  limit?: number;
+}
+
 const MYSTERY_PERSON_LABEL = '\u795E\u79D8\u4EBA';
 const MYSTERY_KING_LABEL = '\u795E\u79D8\u738B\u8005';
 const MAX_EVENTS_PER_SESSION = 50000;
 const EVENT_RETENTION_PRUNE_BATCH = 3000;
 const IDENTITY_CACHE_CONFIDENCE = 90;
 type KnownUserIdentity = { userId?: string; userLink?: string };
+export type KnownUserIdentityLookupState = {
+  status: 'clean' | 'conflict' | 'pending';
+  userId?: string;
+  userLink?: string;
+  identityKeys: string[];
+};
 type EventPayloadIdentity = {
   userName?: string;
   userId?: string;
@@ -662,6 +677,68 @@ export class AppDatabase {
     tx(events);
   }
 
+  getPendingGiftIdentityBackfillCandidates(query: PendingGiftIdentityBackfillQuery): LiveEvent[] {
+    const normalizedUserName = normalizeObservedName(query.userName);
+    const sessionId = normalizeOptionalText(query.sessionId);
+    if (!normalizedUserName || !sessionId) {
+      return [];
+    }
+
+    const limit = Math.min(Math.max(query.limit ?? 120, 1), 500);
+    const clauses = [
+      'session_id = ?',
+      "category = 'gift'",
+      "NULLIF(COALESCE(user_id, ''), '') IS NULL",
+      "NULLIF(COALESCE(user_link, ''), '') IS NULL",
+      `(
+        user_name = ?
+        OR (json_valid(payload_json) AND json_extract(payload_json, '$.userName') = ?)
+        OR message LIKE ?
+        OR (json_valid(payload_json) AND json_extract(payload_json, '$.rawText') LIKE ?)
+        OR (json_valid(payload_json) AND json_extract(payload_json, '$.text') LIKE ?)
+      )`,
+    ];
+    const args: Array<string | number> = [
+      sessionId,
+      normalizedUserName,
+      normalizedUserName,
+      `%${normalizedUserName}%`,
+      `%${normalizedUserName}%`,
+      `%${normalizedUserName}%`,
+    ];
+
+    if (query.roomId) {
+      clauses.push('(room_id = ? OR room_id IS NULL OR room_id = \'\')');
+      args.push(query.roomId);
+    }
+
+    args.push(limit);
+    return this.db
+      .prepare(`
+        SELECT
+          id,
+          unique_key AS uniqueKey,
+          session_id AS sessionId,
+          category,
+          created_at AS createdAt,
+          room_id AS roomId,
+          room_title AS roomTitle,
+          host_name AS hostName,
+          user_name AS userName,
+          user_id AS userId,
+          user_link AS userLink,
+          message,
+          gift_name AS giftName,
+          gift_count AS giftCount,
+          payload_json AS payloadJson
+        FROM events
+        WHERE ${clauses.join(' AND ')}
+        ORDER BY created_at DESC, id DESC
+        LIMIT ?
+      `)
+      .all(...args) as LiveEvent[];
+  }
+
   upsertUserIdentityObservation(observation: UserIdentityObservation): void {
     const userIdNorm = normalizeIdentityComparable(observation.userId);
     const userId = normalizeOptionalText(observation.userId);
@@ -890,6 +967,64 @@ export class AppDatabase {
         LIMIT ?
       `)
       .all(...args) as LiveEvent[];
+  }
+
+  getEventHistory(query: EventHistoryQuery): EventHistoryResult {
+    const limit = Math.min(Math.max(query.limit ?? 100, 1), 200);
+    const clauses = ['session_id = ?', 'category = ?'];
+    const args: Array<string | number> = [query.sessionId, query.category];
+    const keyword = String(query.q ?? '').trim().toLowerCase();
+
+    if (query.cursorCreatedAt && typeof query.cursorId === 'number') {
+      clauses.push('(created_at < ? OR (created_at = ? AND id < ?))');
+      args.push(query.cursorCreatedAt, query.cursorCreatedAt, query.cursorId);
+    }
+
+    if (keyword) {
+      clauses.push(`(
+        LOWER(COALESCE(user_name, '')) LIKE ?
+        OR LOWER(COALESCE(message, '')) LIKE ?
+        OR LOWER(COALESCE(gift_name, '')) LIKE ?
+      )`);
+      const likeKeyword = `%${keyword}%`;
+      args.push(likeKeyword, likeKeyword, likeKeyword);
+    }
+
+    args.push(limit + 1);
+    const rows = this.db
+      .prepare(`
+        SELECT
+          id,
+          unique_key AS uniqueKey,
+          session_id AS sessionId,
+          category,
+          created_at AS createdAt,
+          room_id AS roomId,
+          room_title AS roomTitle,
+          host_name AS hostName,
+          user_name AS userName,
+          user_id AS userId,
+          user_link AS userLink,
+          message,
+          gift_name AS giftName,
+          gift_count AS giftCount,
+          payload_json AS payloadJson
+        FROM events
+        WHERE ${clauses.join(' AND ')}
+        ORDER BY created_at DESC, id DESC
+        LIMIT ?
+      `)
+      .all(...args) as LiveEvent[];
+
+    const hasMore = rows.length > limit;
+    const items = hasMore ? rows.slice(0, limit) : rows;
+    const last = items[items.length - 1];
+    return {
+      items,
+      nextCursor: rows.length > limit && typeof last?.id === 'number'
+        ? { createdAt: last.createdAt, id: last.id }
+        : undefined,
+    };
   }
 
 
@@ -1125,9 +1260,25 @@ export class AppDatabase {
     userName: string,
     roomId?: string,
   ): KnownUserIdentity | undefined {
+    const state = this.getKnownUserIdentityState(sessionId, userName, roomId);
+    if (state.status !== 'clean') {
+      return undefined;
+    }
+
+    return {
+      userId: state.userId,
+      userLink: state.userLink,
+    };
+  }
+
+  getKnownUserIdentityState(
+    sessionId: string,
+    userName: string,
+    roomId?: string,
+  ): KnownUserIdentityLookupState {
     const normalizedUserName = normalizeObservedName(userName);
     if (!normalizedUserName) {
-      return undefined;
+      return { status: 'pending', identityKeys: [] };
     }
 
     const variants = Array.from(
@@ -1139,32 +1290,32 @@ export class AppDatabase {
     );
 
     for (const variant of variants) {
-      const bySession = this.findCachedKnownUserIdentity('session', sessionId, variant);
-      if (bySession) {
+      const bySession = this.findCachedKnownUserIdentityState('session', sessionId, variant);
+      if (bySession.status === 'clean' || bySession.status === 'conflict') {
         return bySession;
       }
     }
 
     if (roomId) {
       for (const variant of variants) {
-        const byRoom = this.findCachedKnownUserIdentity('room', roomId, variant);
-        if (byRoom) {
+        const byRoom = this.findCachedKnownUserIdentityState('room', roomId, variant);
+        if (byRoom.status === 'clean' || byRoom.status === 'conflict') {
           return byRoom;
         }
       }
     }
 
-    return undefined;
+    return { status: 'pending', identityKeys: [] };
   }
 
-  private findCachedKnownUserIdentity(
+  private findCachedKnownUserIdentityState(
     scopeType: 'session' | 'room',
     scopeId: string,
     userName: string,
-  ): KnownUserIdentity | undefined {
+  ): KnownUserIdentityLookupState {
     const normalizedName = normalizeObservedName(userName);
     if (!normalizedName || !scopeId) {
-      return undefined;
+      return { status: 'pending', identityKeys: [] };
     }
 
     const rows = this.db
@@ -1195,23 +1346,28 @@ export class AppDatabase {
       rows.map((row) => normalizeOptionalText(row.identityKey)).filter((value): value is string => Boolean(value)),
     );
     if (identityKeys.size !== 1) {
-      return undefined;
+      return {
+        status: identityKeys.size > 1 ? 'conflict' : 'pending',
+        identityKeys: Array.from(identityKeys),
+      };
     }
 
     const row = rows[0];
     const userId = normalizeOptionalText(row?.userId);
     const userLink = normalizeOptionalText(row?.userLink);
     if (!userId && !userLink) {
-      return undefined;
+      return { status: 'pending', identityKeys: Array.from(identityKeys) };
     }
 
     return {
+      status: 'clean',
       userId,
       userLink:
         userLink ||
         (userId && isDirectDouyinUserId(userId)
           ? `https://www.douyin.com/user/${encodeURIComponent(userId)}`
           : undefined),
+      identityKeys: Array.from(identityKeys),
     };
   }
 

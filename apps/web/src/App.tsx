@@ -12,6 +12,7 @@ import './styles.css';
 import type {
   BrowserState,
   EventCategory,
+  EventHistoryCursor,
   HighlightUserConfig,
   HighlightUsersSnapshot,
   LiveEvent,
@@ -34,6 +35,9 @@ type FrontendCommentDiagnostics = {
   displayNoise: number;
   displayCategoryMismatch: number;
   historyCommentBackfill: number;
+  historyQueryable: number;
+  displayedInMainWindow: number;
+  mainWindowTrimmed: number;
   lastCommentUniqueKey: string;
   lastCommentCreatedAt: string;
   lastSseCommentReceivedAt: string;
@@ -128,6 +132,43 @@ const FONT_SIZE_OPTIONS: Array<{ id: MessageFontSize; label: string }> = [
 ];
 
 const VERSION_LOGS = [
+  {
+    version: 'V26.6.24.2',
+    date: '2026-06-24',
+    items: [
+      '修复 V26.6.23.1 礼物备注身份后到回填在大直播间可能反复扫描历史礼物，拖慢采集入库和实时推送的问题。',
+      '只有当前会话确实出现过缺稳定身份的待补礼物时，后续同名稳定身份才触发历史礼物回填查询；普通评论/进场/互动不再无条件扫库。',
+      '新增礼物回填性能回归，继续保持主评论 200、礼物 120、每会话明细 50000、不启用纯昵称兜底；此版本作为采集速度修复测试包。',
+    ],
+  },
+  {
+    version: 'V26.6.24.1',
+    date: '2026-06-24',
+    items: [
+      '修复采集器安装后抖音页面动态新建聊天根时，短生命周期评论可能在 250ms 兜底轮询前消失导致漏采的问题。',
+      '新聊天根一出现会立即挂载 chat MutationObserver 并同步扫描一次，降低高流量直播间虚拟列表快速移除评论造成的漏采风险。',
+      '新增动态聊天根回归和静态门禁，继续保持主评论 200、礼物 120、每会话明细 50000、不启用纯昵称兜底。',
+    ],
+  },
+  {
+    version: 'V26.6.23.1',
+    date: '2026-06-23',
+    items: [
+      '评论采集新增 collectorTraceId、collectorObservedAt、collectorSource 和 domRevision 诊断字段，用于定位 DOM 行复用或变更导致的偶现丢评论。',
+      'DOM 变更会先标记行 revision 再解析，但诊断字段不参与业务去重，避免同一条评论被重复扫描成多条。',
+      '礼物先到且缺稳定身份时，后续评论/进场/互动建立干净身份缓存后会回填同一礼物行并重发同一 uniqueKey，让特别关注备注重新命中。',
+      '继续固定每会话明细 50000、主评论 200、礼物 120；不启用纯昵称兜底，安装后最终验收由用户拍板。',
+    ],
+  },
+  {
+    version: 'V26.6.18.1',
+    date: '2026-06-18',
+    items: [
+      '新增评论展示账本：复制诊断可区分主窗口 200 条裁剪、历史可查询和真实链路丢失。',
+      '礼物备注支持同会话/同直播间稳定身份缓存反哺，命中诊断标记 identity_cache_backfill。',
+      '同昵称多稳定身份冲突时不补备注并记录 identity_conflict；继续固定 5 万明细、评论 200、礼物 120。',
+    ],
+  },
   {
     version: 'V26.6.12.1',
     date: '2026-06-12',
@@ -734,6 +775,9 @@ const EMPTY_FRONTEND_COMMENT_DIAGNOSTICS: FrontendCommentDiagnostics = {
   displayNoise: 0,
   displayCategoryMismatch: 0,
   historyCommentBackfill: 0,
+  historyQueryable: 0,
+  displayedInMainWindow: 0,
+  mainWindowTrimmed: 0,
   lastCommentUniqueKey: '',
   lastCommentCreatedAt: '',
   lastSseCommentReceivedAt: '',
@@ -1385,6 +1429,8 @@ function appendDisplayItemsWithDiagnostics(
     noise: number;
     uniqueKeyDuplicate: number;
     duplicate: number;
+    displayedInMainWindow: number;
+    mainWindowTrimmed: number;
     skipped: DisplaySkipDiagnostic[];
   };
 } {
@@ -1393,6 +1439,8 @@ function appendDisplayItemsWithDiagnostics(
     noise: 0,
     uniqueKeyDuplicate: 0,
     duplicate: 0,
+    displayedInMainWindow: category === 'comment' ? items.length : 0,
+    mainWindowTrimmed: 0,
     skipped: [] as DisplaySkipDiagnostic[],
   };
   if (!rows.length) {
@@ -1463,10 +1511,19 @@ function appendDisplayItemsWithDiagnostics(
   }
 
   if (!changed) {
+    if (category === 'comment') {
+      diagnostics.displayedInMainWindow = items.length;
+    }
     return { items, diagnostics };
   }
 
-  return { items: Array.from(uniqueItems.values()).sort(compareEvents).slice(-EVENT_LIMITS[category]), diagnostics };
+  const sortedItems = Array.from(uniqueItems.values()).sort(compareEvents);
+  const nextItems = sortedItems.slice(-EVENT_LIMITS[category]);
+  if (category === 'comment') {
+    diagnostics.displayedInMainWindow = nextItems.length;
+    diagnostics.mainWindowTrimmed = Math.max(0, sortedItems.length - nextItems.length);
+  }
+  return { items: nextItems, diagnostics };
 }
 
 function compareEventsDesc(a: Pick<LiveEvent, 'createdAt'>, b: Pick<LiveEvent, 'createdAt'>): number {
@@ -2676,6 +2733,171 @@ const EventList = memo(function EventList({
   );
 });
 
+function EventHistoryPanel({
+  sessionId,
+  open,
+  onClose,
+  highlightUsers,
+  onCommentHistoryLoaded,
+}: {
+  sessionId?: string;
+  open: boolean;
+  onClose: () => void;
+  highlightUsers: CompiledHighlightUser[];
+  onCommentHistoryLoaded?: (count: number) => void;
+}) {
+  const [historyCategory, setHistoryCategory] = useState<Extract<EventCategory, 'comment' | 'gift'>>('comment');
+  const [historyRows, setHistoryRows] = useState<LiveEvent[]>([]);
+  const [historyCursor, setHistoryCursor] = useState<EventHistoryCursor | undefined>(undefined);
+  const [historyQuery, setHistoryQuery] = useState('');
+  const [historyDraftQuery, setHistoryDraftQuery] = useState('');
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyError, setHistoryError] = useState('');
+  const historyRequestSeqRef = useRef(0);
+
+  const loadHistoryPage = useStableEvent(async (reset = false) => {
+    if (!sessionId) {
+      return;
+    }
+    const requestSeq = historyRequestSeqRef.current + 1;
+    historyRequestSeqRef.current = requestSeq;
+    setHistoryLoading(true);
+    setHistoryError('');
+    try {
+      const response = await api.getEventHistory({
+        sessionId,
+        category: historyCategory,
+        limit: 100,
+        cursor: reset ? undefined : historyCursor,
+        q: historyQuery,
+      });
+      if (historyRequestSeqRef.current !== requestSeq) {
+        return;
+      }
+      if (reset) {
+        setHistoryRows(response.items);
+      } else {
+        setHistoryRows((current) => [...current, ...response.items]);
+      }
+      setHistoryCursor(response.nextCursor);
+      if (historyCategory === 'comment' && response.items.length) {
+        onCommentHistoryLoaded?.(response.items.length);
+      }
+    } catch (reason) {
+      if (historyRequestSeqRef.current === requestSeq) {
+        setHistoryError(reason instanceof Error ? reason.message : '读取历史消息失败');
+      }
+    } finally {
+      if (historyRequestSeqRef.current === requestSeq) {
+        setHistoryLoading(false);
+      }
+    }
+  });
+
+  useEffect(() => {
+    setHistoryRows([]);
+    setHistoryCursor(undefined);
+    setHistoryError('');
+  }, [sessionId, historyCategory, historyQuery]);
+
+  useEffect(() => {
+    if (!open || !sessionId) {
+      return;
+    }
+    void loadHistoryPage(true);
+  }, [open, sessionId, historyCategory, historyQuery, loadHistoryPage]);
+
+  if (!open) {
+    return null;
+  }
+
+  const categoryLabel = historyCategory === 'comment' ? '评论' : '礼物';
+  return (
+    <section className="block history-panel">
+      <div className="history-panel-head">
+        <div>
+          <div className="block-title history-title">历史查询</div>
+          <div className="history-subtitle">查看数据库已保留的{categoryLabel}历史，主界面仍保持实时窗口。</div>
+        </div>
+        <button className="history-close-btn" onClick={onClose} type="button">
+          关闭
+        </button>
+      </div>
+
+      <div className="history-controls">
+        <div className="history-tabs">
+          <button
+            className={`history-tab ${historyCategory === 'comment' ? 'is-active' : ''}`.trim()}
+            onClick={() => setHistoryCategory('comment')}
+            type="button"
+          >
+            评论
+          </button>
+          <button
+            className={`history-tab ${historyCategory === 'gift' ? 'is-active' : ''}`.trim()}
+            onClick={() => setHistoryCategory('gift')}
+            type="button"
+          >
+            礼物
+          </button>
+        </div>
+        <form
+          className="history-search"
+          onSubmit={(event) => {
+            event.preventDefault();
+            setHistoryQuery(historyDraftQuery.trim());
+          }}
+        >
+          <input
+            className="filter-input"
+            value={historyDraftQuery}
+            onChange={(event) => setHistoryDraftQuery(event.target.value)}
+            placeholder="搜索昵称、评论、礼物"
+          />
+          <button className="toolbar-btn" type="submit" disabled={!sessionId || historyLoading}>
+            查询
+          </button>
+        </form>
+      </div>
+
+      {!sessionId ? <div className="event-empty">暂无会话，无法查询历史</div> : null}
+      {historyError ? <div className="toolbar-error">{historyError}</div> : null}
+
+      <div className="history-list" aria-label={`${categoryLabel}历史消息`}>
+        {historyRows.length === 0 && !historyLoading ? <div className="event-empty">暂无历史数据</div> : null}
+        {historyRows.map((item) => {
+          const highlightUser = getHighlightUserMatch(item, historyCategory, highlightUsers);
+          return (
+            <div
+              className={`event-row history-row ${highlightUser ? 'event-row-highlight-user' : ''}`.trim()}
+              key={item.uniqueKey}
+            >
+              {highlightUser ? (
+                <div className="event-highlight-marker">
+                  特别关注 {highlightUser.remark || highlightUser.userId}
+                </div>
+              ) : null}
+              <div className="event-line">{renderEventLine(item, historyCategory, highlightUser)}</div>
+            </div>
+          );
+        })}
+      </div>
+
+      <div className="history-footer">
+        <span className="history-count">已加载 {historyRows.length} 条{categoryLabel}</span>
+        <button
+          className="toolbar-btn"
+          onClick={() => void loadHistoryPage(false)}
+          disabled={!sessionId || historyLoading || !historyCursor}
+          type="button"
+        >
+          {historyLoading ? '加载中...' : historyCursor ? '继续加载' : '已到底'}
+        </button>
+      </div>
+    </section>
+  );
+}
+
 const DualEventBlock = memo(function DualEventBlock({
   sessionId,
   collapsed,
@@ -3081,6 +3303,7 @@ export default function App() {
   const [alwaysOnTopBusy, setAlwaysOnTopBusy] = useState(false);
   const [versionLogOpen, setVersionLogOpen] = useState(false);
   const [highlightPanelOpen, setHighlightPanelOpen] = useState(false);
+  const [historyPanelOpen, setHistoryPanelOpen] = useState(false);
   const [highlightHitEvents, setHighlightHitEvents] = useState<LiveEvent[]>([]);
   const [lastSessionId, setLastSessionId] = useState<string | undefined>(undefined);
   const [themeId, setThemeId] = useState<ThemeId>(() => readTheme());
@@ -3180,12 +3403,16 @@ export default function App() {
     noise: number;
     uniqueKeyDuplicate: number;
     duplicate: number;
+    displayedInMainWindow: number;
+    mainWindowTrimmed: number;
     skipped?: DisplaySkipDiagnostic[];
   }) => {
     frontendDiagnosticsRef.current.displayCategoryMismatch += diagnostics.categoryMismatch;
     frontendDiagnosticsRef.current.displayNoise += diagnostics.noise;
     frontendDiagnosticsRef.current.displayUniqueKeyDuplicate += diagnostics.uniqueKeyDuplicate;
     frontendDiagnosticsRef.current.displayDuplicate += diagnostics.duplicate;
+    frontendDiagnosticsRef.current.displayedInMainWindow = diagnostics.displayedInMainWindow;
+    frontendDiagnosticsRef.current.mainWindowTrimmed += diagnostics.mainWindowTrimmed;
     if (diagnostics.skipped?.length) {
       recentSkippedCommentsRef.current = [...recentSkippedCommentsRef.current, ...diagnostics.skipped]
         .filter((item) => item.candidate.category === 'comment')
@@ -3379,6 +3606,10 @@ export default function App() {
 
   const queueStatsRefreshRef = useRef<(() => void) | null>(null);
 
+  const recordCommentHistoryLoaded = useStableEvent((count: number) => {
+    frontendDiagnosticsRef.current.historyQueryable += count;
+  });
+
   useEffect(() => {
     const unsubscribe = desktopWindowApi?.onMoveStateChange?.(({ moving }) => {
       windowMovingRef.current = moving;
@@ -3555,6 +3786,7 @@ export default function App() {
       api.getEvents('gift', targetSessionId),
     ]);
     frontendDiagnosticsRef.current.historyCommentBackfill += comments.items.length;
+    frontendDiagnosticsRef.current.historyQueryable += comments.items.length;
 
     const keepAfterClear = (items: LiveEvent[]) => {
       if (!clearedAt) {
@@ -3866,6 +4098,11 @@ export default function App() {
       displayWindow: {
         commentStatsMinusDisplay: Math.max(0, stats.comments - events.comment.length),
         commentSseMinusDisplay: Math.max(0, frontendDiagnosticsRef.current.sseCommentRows - events.comment.length),
+        commentDisplayedInMainWindow: frontendDiagnosticsRef.current.displayedInMainWindow,
+        commentMainWindowTrimmed: frontendDiagnosticsRef.current.mainWindowTrimmed,
+        commentHistoryQueryable: frontendDiagnosticsRef.current.historyQueryable,
+        commentHiddenByMainWindowLimit:
+          frontendDiagnosticsRef.current.mainWindowTrimmed > 0 && frontendDiagnosticsRef.current.historyQueryable > 0,
         commentDisplayLimitReached: events.comment.length >= EVENT_LIMITS.comment,
       },
       ui: {
@@ -4088,6 +4325,9 @@ export default function App() {
           <button className="toolbar-btn" onClick={openMysteryWindow}>
             神秘人
           </button>
+          <button className="toolbar-btn" onClick={() => setHistoryPanelOpen(true)} disabled={!sessionId}>
+            历史查询
+          </button>
           <button className="toolbar-btn" onClick={() => void handleCopyDiagnostics()}>
             复制诊断
           </button>
@@ -4172,6 +4412,14 @@ export default function App() {
         focusMode={focusMode}
         highlightUsers={compiledHighlightUsers}
         messageFontSize={messageFontSize}
+      />
+
+      <EventHistoryPanel
+        sessionId={sessionId}
+        open={historyPanelOpen}
+        onClose={() => setHistoryPanelOpen(false)}
+        highlightUsers={compiledHighlightUsers}
+        onCommentHistoryLoaded={recordCommentHistoryLoaded}
       />
 
     </main>

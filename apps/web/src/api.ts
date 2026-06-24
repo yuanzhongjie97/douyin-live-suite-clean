@@ -1,5 +1,7 @@
 ﻿import type {
   BrowserState,
+  EventHistoryCursor,
+  EventHistoryResult,
   EventCategory,
   HighlightUsersSnapshot,
   LiveEvent,
@@ -49,6 +51,27 @@ export const api = {
       params.set('sessionId', sessionId);
     }
     return request(`/api/events?${params.toString()}`);
+  },
+  getEventHistory(options: {
+    sessionId: string;
+    category: Extract<EventCategory, 'comment' | 'gift'>;
+    limit?: number;
+    cursor?: EventHistoryCursor;
+    q?: string;
+  }): Promise<EventHistoryResult> {
+    const params = new URLSearchParams({
+      sessionId: options.sessionId,
+      category: options.category,
+      limit: String(options.limit ?? 100),
+    });
+    if (options.cursor) {
+      params.set('cursorCreatedAt', options.cursor.createdAt);
+      params.set('cursorId', String(options.cursor.id));
+    }
+    if (options.q?.trim()) {
+      params.set('q', options.q.trim());
+    }
+    return request(`/api/events/history?${params.toString()}`);
   },
   getCommentDiagnostics(): Promise<{
     counters: Record<string, number>;

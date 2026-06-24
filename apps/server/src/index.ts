@@ -243,6 +243,21 @@ export async function buildApp(options: { localApiToken?: string } = {}): Promis
     };
   });
 
+  app.get('/api/events/history', async (request) => {
+    const query = z
+      .object({
+        sessionId: z.string(),
+        category: z.enum(['comment', 'gift']),
+        limit: z.coerce.number().int().min(1).max(200).optional(),
+        cursorCreatedAt: z.string().optional(),
+        cursorId: z.coerce.number().int().optional(),
+        q: z.string().trim().max(80).optional(),
+      })
+      .parse(request.query);
+
+    return service.getEventHistory(query);
+  });
+
   app.get('/api/diagnostics/comment-flow', async () => commentDiagnostics.snapshot());
 
   app.get('/api/diagnostics/capture-integrity', async () => commentDiagnostics.snapshot());

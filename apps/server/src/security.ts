@@ -114,12 +114,12 @@ export function normalizeAllowedDouyinLiveUrl(value: string | undefined): string
     return undefined;
   }
 
-  const roomId = parsed.pathname.match(/^\/(\d{6,})(?:\/)?$/u)?.[1];
-  if (!roomId) {
+  const roomPath = parsed.pathname.match(/^\/([A-Za-z0-9]{3,})(?:\/)?$/u)?.[1];
+  if (!roomPath) {
     return undefined;
   }
 
-  return `https://live.douyin.com/${roomId}`;
+  return `https://live.douyin.com/${roomPath}`;
 }
 
 export function normalizeAllowedDouyinEntryUrl(value: string | undefined): string | undefined {

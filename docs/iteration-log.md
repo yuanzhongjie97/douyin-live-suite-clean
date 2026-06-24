@@ -377,3 +377,37 @@
 - 追加验证：`V26.6.12.1` 代码路径对 `https://live.douyin.com/127874409138` 做 10 分钟真实 smoke，raw total 600、raw comments 205、persisted total 302、persisted comments 51、entries 241、interactions 10；四类可见探针 `unmatchedCount=0`，`unmatchedVisibleMessages=[]`，`suspiciousRawCommentGroups=[]`。
 - 打包：版本升为 `V26.6.12.1` / `26.6.12-1`；`npm run desktop:pack:fast` 通过并执行 packaged native ABI 门禁；安装包 `C:\Users\85855\PycharmProjects\PythonProject\douyin-live-suite-clean\apps\desktop\release\糖三角-V26.6.12.1-安装包.exe`，大小 `85,329,128` bytes，SHA256 `3AE6D269F9A90BEB52585649C131C7E47A9D822A7D16D294555FDFCA3B71CEEB`。
 - 边界：不改变采集入口、SQLite 表结构、统计/导出口径、每会话原始明细 50000 条上限、UI 近期窗口和特别关注展示口径；安装后最终人工验收仍由用户拍板。
+
+### 68 V26.6.18.1 评论展示账本与礼物备注缓存反哺打包
+- 内容：新增评论展示账本，复制诊断可区分主窗口 200 条裁剪、历史可查询和真实链路丢失；历史查询继续作为 DB 保留范围内的全量 UI 排查入口。
+- 内容：礼物缺稳定身份时可使用同会话/同直播间已建立的干净稳定身份缓存反哺备注；命中诊断记录 `source: identity_cache_backfill`，同昵称多身份冲突记录 `gift.identity_conflict` 且不误补备注。
+- 验证：`node apps/desktop/scripts/regression-release-version.cjs` 通过；`npm run audit:security` high 门禁通过；`npm run test:regression` 通过 server 33、web 17、desktop 6。
+- 打包：版本升为 `V26.6.18.1` / `26.6.18-1`；`npm run desktop:pack:fast` 通过，打包过程完成 better-sqlite3 Electron ABI 143 重编并通过 packaged native ABI 门禁。
+- 产物：`C:\Users\85855\PycharmProjects\PythonProject\douyin-live-suite-clean\apps\desktop\release\糖三角-V26.6.18.1-安装包.exe`，大小 `85,330,483` bytes，SHA256 `DE053F97CC8BC4A712DD9739B7D315FB25A5E7D8B4EBFD83EA3889CB406376A0`。
+- 边界：继续固定每会话原始明细 50000 条、主评论 200、礼物 120；不启用纯昵称兜底；安装后最终手工验收仍由用户拍板。
+
+### 69 V26.6.23.1 comment trace and gift remark backfill
+- Content: comment collector payloads now include `collectorTraceId`, `collectorObservedAt`, `collectorSource`, and `domRevision` to prove whether a visible comment reached collector parsing and whether DOM row reuse or mutation was involved.
+- Content: DOM mutations mark row revision before parsing, while trace/revision fields stay out of business fingerprints and unique keys so diagnostics cannot create duplicate comments.
+- Content: when a gift arrives before stable identity, a later clean same-session/same-room identity observation backfills the same gift row and republishes the same `uniqueKey`; this also covers gift and identity appearing in the same collector batch.
+- Verification: `regression-collector-dom-revision-trace.mjs` PASS; `regression-gift-pending-identity-backfill.mjs` PASS; `npm run test:regression` PASS with server 35, web 17, desktop 6; `npm run audit:security` PASS with high=0.
+- Packaging: version `V26.6.23.1` / `26.6.23-1`; `npm run desktop:pack:fast` PASS and packaged native ABI gate passed.
+- Artifact: `C:\Users\85855\PycharmProjects\PythonProject\douyin-live-suite-clean\apps\desktop\release\糖三角-V26.6.23.1-安装包.exe`, size `85,330,997` bytes, SHA256 `02620373B52934AB5D8B2410A15D6645B7FEF9DC312D8E2B2007D25A9919F111`.
+- Boundary: raw detail retention remains 50,000, main comments 200, gifts 120; no pure nickname fallback; capture entry, statistics/export, and special-follow display format are unchanged.
+
+### 70 V26.6.24.1 dynamic chat root comment capture
+- Content: fixed a P0 collector-side miss where a chat root created after observer installation could contain a short-lived comment row that disappeared before the 250ms fallback scan.
+- Content: body subtree mutations now detect added chat roots, immediately attach chat observers, and synchronously scan the new root once; unrelated subtree mutations are filtered to avoid broad full-page digestion.
+- Verification: `regression-collector-late-chat-root-observer.mjs` failed before the fix and passed after; `npm run test:regression` PASS with server 36, web 17, desktop 6; `npm run audit:security` PASS for the high gate.
+- Packaging: version `V26.6.24.1` / `26.6.24-1`; `npm run desktop:pack:fast` PASS and packaged native ABI gate passed.
+- Artifact: `C:\Users\85855\PycharmProjects\PythonProject\douyin-live-suite-clean\apps\desktop\release\糖三角-V26.6.24.1-安装包.exe`, size `85,331,863` bytes, SHA256 `F9669BF440FEB1E344CBC76E78969D6ADCB475A9B270CA63905A42B0F26AD2F7`.
+- Boundary: main comments 200, gifts 120, raw detail retention 50,000, history query, export/statistics, and special-follow display rules are unchanged; final installed real-room acceptance remains user approval.
+
+### 71 V26.6.24.2 gift backfill speed gate
+- Content: fixed the V26.6.23.1 gift-remark identity-later backfill performance regression. Stable identity observations no longer scan historical gift rows unless the current session has actually recorded a same-name gift pending identity backfill.
+- Content: added an in-memory pending gift identity-name index scoped by session, room, and normalized display name. The expensive DB candidate query is now skipped for ordinary comments/entries/interactions that have no pending gift to repair.
+- Content: the existing gift-first identity-later behavior remains: a gift without stable identity can still be backfilled and republished after a later clean stable identity observation.
+- Verification: `regression-gift-backfill-skip-unneeded-db-scan.mjs` failed before the fix with 80 unnecessary pending-gift queries and passed after; `regression-gift-pending-identity-backfill.mjs` PASS; `npm run test:regression` PASS with server 37, web 17, desktop 6; `npm run audit:security` PASS for the high gate.
+- Packaging: version `V26.6.24.2` / `26.6.24-2`; `npm run desktop:pack:fast` PASS and packaged native ABI gate passed.
+- Artifact: `C:\Users\85855\PycharmProjects\PythonProject\douyin-live-suite-clean\apps\desktop\release\糖三角-V26.6.24.2-安装包.exe`, size `85,332,556` bytes, SHA256 `7AA634DDC6728CB1BA747D418FD540FE45F13B05C352C8035FDD953300FF151E`.
+- Boundary: this is a capture-speed fix test package. It does not claim every real-room comment-loss DOM variant is closed. Main comments 200, gifts 120, raw detail retention 50,000, history query, export/statistics, and special-follow display rules are unchanged.

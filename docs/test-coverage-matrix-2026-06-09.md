@@ -1,7 +1,27 @@
 # 测试覆盖矩阵
 
 生成日期：2026-06-09  
-当前版本：`V26.6.9.2`  
+Current version: `V26.6.24.2`
+
+## 19. 2026-06-24 P0 gift backfill speed gates
+
+| P0 module | Automation | Coverage conclusion | Manual validation still needed |
+| --- | --- | --- | --- |
+| Gift backfill DB scan gate | `regression-gift-backfill-skip-unneeded-db-scan.mjs` | RED before fix with 80 unnecessary DB scans, PASS after fix with 0 scans when no pending gift exists | Busy real-room capture speed observation |
+| Gift-first identity-later behavior | `regression-gift-pending-identity-backfill.mjs` | PASS; pending gifts still backfill and republish the same `uniqueKey` after later stable identity | Real special-follow gift observation |
+| Full regression | `npm run test:regression` | PASS: server 37, web 17, desktop 6 | User installer test |
+| Security audit gate | `npm run audit:security` | PASS for high gate; remaining low/moderate only | None |
+| Packaging gate | `npm run desktop:pack:fast` | PASS: installer `糖三角-V26.6.24.2-安装包.exe`, SHA256 `7AA634DDC6728CB1BA747D418FD540FE45F13B05C352C8035FDD953300FF151E` | Installed startup, capture, history query, export, and real business acceptance |
+
+## 18. 2026-06-24 P0 dynamic chat root comment capture gates
+
+| P0 module | Automation | Coverage conclusion | Manual validation still needed |
+| --- | --- | --- | --- |
+| Late chat root short-lived comment | `regression-collector-late-chat-root-observer.mjs` | RED before fix, PASS after fix; dynamically inserted chat roots are observed before a 40ms comment row disappears | Busy real-room observation |
+| Collector loss resilience static gate | `regression-collector-loss-resilience.mjs` | Protects dynamic root observer attachment, body subtree observation, batch retry, text-node observation, fast scan, and SSE no-trim assumptions | Future DOM variant screenshots |
+| Full regression | `npm run test:regression` | PASS: server 36, web 17, desktop 6 | User installer test |
+| Security audit gate | `npm run audit:security` | PASS for high gate; remaining low/moderate only | None |
+| Packaging gate | `npm run desktop:pack:fast` | PASS: `糖三角-V26.6.24.1-安装包.exe`, SHA256 `F9669BF440FEB1E344CBC76E78969D6ADCB475A9B270CA63905A42B0F26AD2F7` | Installed startup, capture, history query, export, and real business acceptance |
 项目路径：`C:\Users\85855\PycharmProjects\PythonProject\douyin-live-suite-clean`
 
 ## 14. 2026-06-11 V26.6.11.6 可见叶子评论兜底采集门禁追加
@@ -179,3 +199,13 @@
 | 总回归门禁 | `npm run test:regression` | PASS：server 32、web 16、desktop 6 | 用户最终安装版验收 |
 | 安全审计门禁 | `npm run audit:security` | PASS：high=0；保留 `exceljs -> uuid` moderate | 无 |
 | 打包门禁 | `node apps/desktop/scripts/regression-release-version.cjs`、`npm run desktop:pack:fast` | PASS：`糖三角-V26.6.12.1-安装包.exe`，SHA256 `3AE6D269F9A90BEB52585649C131C7E47A9D822A7D16D294555FDFCA3B71CEEB` | 安装后启动和真实业务手工验收 |
+
+## 17. 2026-06-23 P0 comment trace and gift remark backfill gates
+
+| P0 module | Automation | Coverage conclusion | Manual validation still needed |
+| --- | --- | --- | --- |
+| DOM revision comment trace | `regression-collector-dom-revision-trace.mjs` | Payloads include trace/revision fields, and those fields do not affect business dedupe | Long busy-room observation |
+| Gift identity-later remark backfill | `regression-gift-pending-identity-backfill.mjs` | Gift-first identity-later cases update the same DB row and republish the same `uniqueKey`, including same-batch events | Real special-follow hit observation |
+| Comment/gift closure regression | `npm run test:server`, `npm run test:web`, `npm run test:regression` | PASS: server 35, web 17, desktop 6 | User installer test |
+| Security audit gate | `npm run audit:security` | PASS: high=0; remaining low/moderate only | None |
+| Packaging gate | `npm run desktop:pack:fast` | PASS: `糖三角-V26.6.23.1-安装包.exe`, SHA256 `02620373B52934AB5D8B2410A15D6645B7FEF9DC312D8E2B2007D25A9919F111` | Installed startup, capture, history query, export, and real business acceptance |

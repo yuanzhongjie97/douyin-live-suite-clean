@@ -851,3 +851,152 @@ Release note:
 - The current evidence covers sampled real-room traffic and mock stop-boundary behavior; user installed-app acceptance remains required after packaging.
 - Real-room smoke can still reveal new Douyin DOM variants later.
 - Existing non-P0 risks remain unchanged: `collector.ts @ts-nocheck`, large-file coupling, export buffer memory profile, no code signing, no CI/coverage gate, no external API support.
+
+## 2026-06-16 Boundary Review: Comment Loss and Gift Remark Loss
+
+### Confirmed Product Boundary
+
+- Comment loss is judged at the DB, statistics, export, and diagnostics layers. The UI recent window is not full history.
+- Gift remark loss is judged by stable identity matching. A gift must hit special-follow remarks when `userId`, `userLink`, payload identity, or sec_uid from a profile URL is available.
+- Nickname fallback remains out of scope because it can match the wrong person in busy rooms.
+- Screenshots alone are not enough for future recurrence triage; copied diagnostics are required to identify the broken layer.
+
+### Risk Code Paths That Can Affect Recurrence
+
+| Area | Code path | Possible trigger | Failure if regressed |
+| --- | --- | --- | --- |
+| Collector DOM parsing | `apps/server/src/collector.ts` visible scan, React payload cache, gift bridge, pending flush | Douyin changes DOM shape, reuses rows, delays payload identity, or stop happens before flush | Visible comments/gifts never reach raw collector events |
+| Server filtering and dedupe | `apps/server/src/capture-service.ts` `persistCollectorEvents`, recent duplicate maps, gift identity updates | Same text appears quickly, source identity changes, gift identity arrives later | Real comments are filtered/deduped, or gift remark update is not republished |
+| Unique key generation | `apps/server/src/utils.ts` `buildUniqueKey` | Same source rescans or no-source repeated comments | Duplicate rows appear, or real repeated comments collapse into one |
+| DB/API/export | `apps/server/src/db.ts`, `apps/server/src/exporter.ts` | Query limit confusion or export source mismatch | DB/export evidence diverges from UI or stats |
+| SSE and frontend queues | `apps/server/src/index.ts`, `apps/web/src/App.tsx` EventSource, incoming queues, display limits | Slow UI, window move, queue backlog, stream reconnect | DB has data but UI recent window or diagnostics look incomplete |
+| Special-follow matching | `apps/server/src/capture-service.ts`, `apps/web/src/App.tsx` highlight matching | Identity only exists in payload or arrives after first gift row | Gift row appears without remark despite stable identity |
+
+### Current Risk Status
+
+- No runtime source code changed in this review; this is a boundary and impact-surface update.
+- Existing P0 mitigations remain valid, but recurrence must be diagnosed by layer before another fix is attempted.
+- Remaining structural risks are still P1/P2 unless evidence shows DB/export loss or stable-identity remark miss: collector `@ts-nocheck`, large collector file, export buffer memory profile, no code signing, no CI/coverage hard gate, no external API support.
+
+## 2026-06-16 UI Full-History Query Risk Closure
+
+### Status
+
+- The previous product boundary "recent UI window only, no full-history UI" is superseded for comments and gifts.
+- The main realtime panels remain bounded for performance: comments 200 and gifts 120.
+- A separate DB-backed history query now covers retained comments and gifts in the UI, so manual review no longer depends only on Excel.
+
+### Mitigated Risk
+
+| Risk | Trigger | Impact | Mitigation |
+| --- | --- | --- | --- |
+| Operator cannot inspect old retained comments/gifts in UI | A busy room exceeds the realtime 200/120 display windows | User may believe comments or gift remarks are lost even though DB/export retained them | Added `/api/events/history` keyset pagination and a `历史查询` UI panel for comments/gifts |
+| Full history UI causes main panel lag | Attempting to load all rows into realtime arrays | Main capture window becomes slow or unstable | History query is separate from realtime `events.comment/events.gift`; each page is capped at 200 |
+| Search or category switch shows stale rows | Slow request returns after the user switches comment/gift or keyword | UI can display wrong evidence during triage | History panel ignores stale responses by request sequence |
+
+### Remaining Boundary
+
+- History query can only show events still retained in SQLite under the current 50,000 raw-detail limit.
+- It does not change collector parsing, dedupe, SSE, statistics, Excel export, special-follow matching, or nickname-fallback policy.
+- Long-duration real-room acceptance still requires user拍板 after packaging.
+
+## 2026-06-18 P0 Recurrence Risk Update
+
+### Comment appears lost in the UI
+
+Current status: mitigated by stronger UI traceability.
+
+- Main realtime comment panel remains capped at 200 rows for performance.
+- DB-backed history query is the formal retained-history UI path.
+- Frontend diagnostics now record `displayedInMainWindow`, `mainWindowTrimmed`, and `historyQueryable`.
+- If a comment exists in DB/history but is not visible in the main panel because of the 200-row window, the issue is classified as display-window trimming, not data loss.
+
+Remaining risk: real Douyin DOM changes can still cause collector-side misses. If reproduced, triage must include screenshot, session ID, time point, copied diagnostics, and the visible comment/gift text.
+
+### Gift special-follow remark disappears
+
+Current status: mitigated for stable-identity and clean identity-cache scenarios.
+
+- Matching still uses stable identity only: top-level `userId/userLink`, payload `userId/userLink`, or extracted sec_uid.
+- Gifts without direct identity can backfill identity from the same-session/same-room clean identity cache built by earlier comment/entry/interaction events.
+- Highlight diagnostics now expose `source: identity_cache_backfill` for cache-backed gift remarks.
+- If one display name maps to multiple stable identities, the gift does not backfill and diagnostics record `gift.identity_conflict`.
+
+Remaining risk: a gift with no direct identity and no prior clean identity cache remains `pending_identity`; pure nickname fallback is intentionally disabled to avoid mislabeling same-name users.
+
+### Updated residual risks
+
+- `apps/server/src/collector.ts` still has broad responsibilities and `@ts-nocheck`; collector DOM changes remain the highest long-term source of real-room regressions.
+- Main UI is not a full-history renderer by design; full retained history must be checked through the history query panel and export.
+- Any release that touches collector, event dedupe, SSE, history query, or highlight matching must run the P0 mock gates before packaging.
+
+## 2026-06-23 P0 Recurrence Risk Closure Update
+
+### Newly mitigated P0 risks
+
+| Risk | Trigger | Impact if unfixed | Mitigation |
+| --- | --- | --- | --- |
+| DOM row mutation lacks traceability | Douyin reuses or mutates a visible chat row while collector scans it more than once | Hard to tell whether a comment was never scanned, scanned then filtered, or scanned as duplicate | Collector now attaches `collectorTraceId`, `collectorObservedAt`, `collectorSource`, and `domRevision`; mutation observers mark row revision before digest |
+| Diagnostic fields create duplicate comments | Trace/time/revision fields change on every scan | Same visible comment can become multiple business fingerprints | Trace fields are explicitly excluded from `makeElementFingerprint()` and business unique-key generation |
+| Gift appears before stable identity | Gift payload lacks `userId/userLink`, then the same user later appears in comment/entry/interaction with stable identity | Gift row remains without special-follow remark even though identity becomes knowable later | Server backfills pending gift rows from clean same-session/same-room identity cache and republishes the same `uniqueKey` |
+| Gift and identity are in the same collector batch | A gift is parsed before a later comment/entry in the same batch establishes stable identity | DB history backfill cannot see the not-yet-inserted gift, so the first visible gift row can still miss its remark | Server now backfills eligible in-memory gift rows before DB insert, then keeps the same `uniqueKey` for UI replacement |
+
+### Boundaries unchanged
+
+- Main realtime windows remain comments 200 and gifts 120.
+- Raw detail retention remains 50,000 events per session.
+- Special-follow matching still does not use pure nickname fallback.
+- Real-room smoke remains acceptance evidence, not an automated release hard gate.
+
+### Remaining non-P0 risks
+
+- `apps/server/src/collector.ts` remains a large `@ts-nocheck` file; future DOM variants may still require targeted regressions.
+- No code signing, no CI coverage hard gate, no external API support by current user decision.
+- Gift rows with no direct identity and no prior or later clean identity cache remain `pending_identity` by design.
+
+## 2026-06-24 P0 Dynamic Chat Root Risk Closure
+
+### Newly mitigated P0 risk
+
+| Risk | Trigger | Impact if unfixed | Mitigation |
+| --- | --- | --- | --- |
+| Late chat root short-lived comments are missed | Douyin creates a new chat root after collector installation and removes comment rows before the 250ms fallback scan | A visible comment can fail to enter raw collector events, DB, history query, Excel, and diagnostics | `document.body` now observes subtree mutations, detects added chat roots, immediately attaches chat observers, and scans the new root once |
+
+### Verification
+
+| Check | Result |
+| --- | --- |
+| `regression-collector-late-chat-root-observer.mjs` | RED before fix, PASS after fix |
+| `regression-collector-loss-resilience.mjs` | PASS; static gate now protects dynamic chat-root observer behavior |
+| `npm run test:regression` | PASS: server 36, web 17, desktop 6 |
+| `npm run audit:security` | PASS for high gate |
+| `npm run desktop:pack:fast` | PASS: `糖三角-V26.6.24.1-安装包.exe` |
+
+### Remaining risk
+
+- This closes one concrete collector-side漏采窗口. It does not prove every future Douyin DOM variant is covered.
+- The highest remaining long-term risk is still collector complexity: `apps/server/src/collector.ts` is large and `@ts-nocheck`.
+- User final acceptance remains required for installed-app real-room behavior.
+
+## 2026-06-24 P0 Gift Backfill Speed Risk Closure
+
+### Newly mitigated P0 risk
+
+| Risk | Trigger | Impact if unfixed | Mitigation |
+| --- | --- | --- | --- |
+| Gift identity-later backfill scans DB too often | A large live room emits many clean stable identities while the session has many gift rows | Server persist queue can spend tens of ms per identity scanning historical gift rows, delaying DB insert, SSE publish, and collector flush acknowledgement | Backfill now keeps a session/room/name pending-gift index and skips historical DB candidate scans unless a matching pending gift exists |
+
+### Verification
+
+| Check | Result |
+| --- | --- |
+| `regression-gift-backfill-skip-unneeded-db-scan.mjs` | RED before fix with 80 unnecessary DB scans, PASS after fix |
+| `regression-gift-pending-identity-backfill.mjs` | PASS; gift-first identity-later behavior preserved |
+| `npm run test:regression` | PASS: server 37, web 17, desktop 6 |
+| `npm run audit:security` | PASS for high gate |
+
+### Remaining risk
+
+- This closes the identified server-side scan pressure. It does not by itself prove every real Douyin DOM comment-loss variant is closed.
+- Pending gift state is in-memory and scoped to the running capture session; app restart intentionally does not perform broad historical repair scans during normal live capture.
+- The highest long-term risk remains collector DOM complexity and real-room variants.

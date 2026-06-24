@@ -48,6 +48,7 @@ export interface HighlightMatchDiagnostic {
   remark?: string;
   matchedBy: string;
   matchedValue: string;
+  source?: string;
   message?: string;
 }
 
@@ -123,6 +124,7 @@ export class CommentDiagnostics {
       remark: trimText(match.remark),
       matchedBy: trimText(match.matchedBy) ?? '',
       matchedValue: trimText(match.matchedValue) ?? '',
+      source: trimText(match.source),
       message: trimText(match.message),
     };
     this.highlightMatches.push(row);

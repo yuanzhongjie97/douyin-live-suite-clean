@@ -61,6 +61,16 @@ export interface LiveEvent {
   payloadJson?: string;
 }
 
+export interface EventHistoryCursor {
+  createdAt: string;
+  id: number;
+}
+
+export interface EventHistoryResult {
+  items: LiveEvent[];
+  nextCursor?: EventHistoryCursor;
+}
+
 export interface SessionStats {
   sessionId?: string;
   comments: number;

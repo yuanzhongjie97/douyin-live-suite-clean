@@ -31,6 +31,24 @@ assert.match(
   'text-node mutations must be routed back through the digest pipeline',
 );
 
+assert.match(
+  collectorSource,
+  /const\s+attachChatRootObserver\s*=\s*\(root\)\s*=>[\s\S]*?attachObserver\(root,\s*'chat'\)/u,
+  'chat roots created after collector installation must immediately receive chat observers',
+);
+
+assert.match(
+  collectorSource,
+  /findAddedChatRoots\(node\)[\s\S]*?attachChatRootObserver\(root\)/u,
+  'body observer must detect dynamically inserted chat roots before short-lived comments are removed',
+);
+
+assert.match(
+  collectorSource,
+  /bodyObserver\.observe\(document\.body,\s*\{\s*childList:\s*true,\s*subtree:\s*true\s*\}\)/u,
+  'body observer must watch subtree mutations so late chat roots nested inside app shells are not missed',
+);
+
 const fastScanWindows = Array.from(
   collectorSource.matchAll(/const\s+recentRows\s*=\s*Array\.from\(root\.querySelectorAll\(chatItemSelector\)\)\.slice\(-(\d+)\)/gu),
 ).map((match) => Number(match[1] ?? 0));

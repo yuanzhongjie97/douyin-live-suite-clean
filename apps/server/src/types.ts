@@ -58,12 +58,18 @@ export interface RawCollectorEvent {
   rawText?: string;
   sourceId?: string;
   collectorClientId?: string;
+  collectorTraceId?: string;
+  collectorObservedAt?: string;
+  collectorSource?: string;
+  domRevision?: number;
   ingestSeq?: number;
   userName?: string;
   userId?: string;
   userLink?: string;
   giftName?: string;
   giftCount?: number;
+  identityBackfillSource?: 'identity_cache';
+  identityBackfillMatchedName?: string;
 }
 
 export interface SessionStats {
@@ -135,6 +141,25 @@ export interface EventQuery {
   sessionId?: string;
   category?: EventCategory;
   limit?: number;
+}
+
+export interface EventHistoryCursor {
+  createdAt: string;
+  id: number;
+}
+
+export interface EventHistoryQuery {
+  sessionId: string;
+  category: Extract<EventCategory, 'comment' | 'gift'>;
+  limit?: number;
+  cursorCreatedAt?: string;
+  cursorId?: number;
+  q?: string;
+}
+
+export interface EventHistoryResult {
+  items: LiveEvent[];
+  nextCursor?: EventHistoryCursor;
 }
 
 export interface CollectorCallbacks {
