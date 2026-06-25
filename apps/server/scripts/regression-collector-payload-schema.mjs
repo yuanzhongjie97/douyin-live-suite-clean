@@ -29,6 +29,27 @@ assert.deepEqual(
   },
 );
 
+const identityAndLatencyPayload = normalizeCollectorPayloadItem({
+  category: 'gift',
+  text: 'user-a sent rose',
+  displayId: ' 83208545044 ',
+  shortId: ' 83208545044 ',
+  uniqueId: ' sec_display_id_001 ',
+  collectorObservedAt: ' 2026-06-25T10:00:00.000Z ',
+  collectorFlushedAt: ' 2026-06-25T10:00:00.200Z ',
+  collectorSource: ' message-bridge ',
+  collectorTraceId: ' trace-1 ',
+  domRevision: 7,
+});
+assert.equal(identityAndLatencyPayload?.displayId, '83208545044');
+assert.equal(identityAndLatencyPayload?.shortId, '83208545044');
+assert.equal(identityAndLatencyPayload?.uniqueId, 'sec_display_id_001');
+assert.equal(identityAndLatencyPayload?.collectorObservedAt, '2026-06-25T10:00:00.000Z');
+assert.equal(identityAndLatencyPayload?.collectorFlushedAt, '2026-06-25T10:00:00.200Z');
+assert.equal(identityAndLatencyPayload?.collectorSource, 'message-bridge');
+assert.equal(identityAndLatencyPayload?.collectorTraceId, 'trace-1');
+assert.equal(identityAndLatencyPayload?.domRevision, 7);
+
 assert.equal(
   normalizeCollectorPayloadItem({ category: 'unknown', rawText: 'hello' })?.category,
   'comment',

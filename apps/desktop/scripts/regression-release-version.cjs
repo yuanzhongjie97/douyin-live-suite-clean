@@ -20,7 +20,7 @@ const semverVersion = visibleVersion.replace(/^V/u, '').replace(/^(\d+)\.(\d+)\.
 assert.ok(visibleVersion, 'App.tsx must expose VERSION_LOGS[0].version');
 assert.equal(releaseTag, visibleVersion, 'APP_RELEASE_TAG must match visible web version');
 assert.match(visibleVersion, /^V\d{2}\.\d{1,2}\.\d{1,2}\.\d+$/u, 'version must follow VYY.M.D.N');
-assert.equal(visibleVersion, 'V26.6.24.2', '2026-06-24 second package must be V26.6.24.2');
+assert.equal(visibleVersion, 'V26.6.25.1', '2026-06-25 first package must be V26.6.25.1');
 for (const packagePath of packagePaths) {
   const packageJson = JSON.parse(fs.readFileSync(path.join(workspaceRoot, packagePath), 'utf8'));
   assert.equal(packageJson.version, semverVersion, `${packagePath} semver must match visible release version`);

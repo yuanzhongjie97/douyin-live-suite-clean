@@ -60,12 +60,19 @@ export interface RawCollectorEvent {
   collectorClientId?: string;
   collectorTraceId?: string;
   collectorObservedAt?: string;
+  collectorFlushedAt?: string;
   collectorSource?: string;
   domRevision?: number;
+  serverReceivedAt?: string;
+  dbInsertedAt?: string;
+  busPublishedAt?: string;
   ingestSeq?: number;
   userName?: string;
   userId?: string;
   userLink?: string;
+  displayId?: string;
+  shortId?: string;
+  uniqueId?: string;
   giftName?: string;
   giftCount?: number;
   identityBackfillSource?: 'identity_cache';
@@ -106,6 +113,9 @@ export interface HighlightUserConfig {
   userId: string;
   remark?: string;
   line: number;
+  identityKind?: 'short_id' | 'direct_profile_id' | 'profile_url' | 'wildcard' | 'unknown';
+  status?: 'resolvable' | 'partially_resolvable' | 'unresolved';
+  warning?: string;
 }
 
 export interface HighlightUsersSnapshot {

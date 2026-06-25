@@ -1128,3 +1128,57 @@ node apps\desktop\scripts\run-regressions.cjs
 | `npm run audit:security` | PASS for high gate; remaining `esbuild` low and `uuid/exceljs` moderate |
 | `npm run desktop:pack:fast` | PASS; packaged native ABI gate passed |
 | Installer SHA256 | `7AA634DDC6728CB1BA747D418FD540FE45F13B05C352C8035FDD953300FF151E` |
+
+## 2026-06-25 Additional SOP: P0 non-live noise, latency, and short-ID remarks
+
+### TC-CAP-026_Non-live panels must not enter comments
+- Priority: P0
+- Requirement: Private-message, customer-service, notification, profile, and other non-live side-panel rows must not enter comment DB/statistics/export.
+- Steps:
+  1. Run `node --import tsx apps/server/scripts/regression-comment-non-live-panel-noise.mjs`.
+  2. Mock one real live chat comment and several non-live side-panel rows.
+  3. Inspect emitted comments and collector diagnostics.
+- Expected Results:
+  1. Real live comment is captured.
+  2. Non-live panel rows are absent from comment events.
+  3. Diagnostics include `digest.non_live_panel_noise`.
+
+### TC-CAP-027_Comment latency segments must be measurable
+- Priority: P0
+- Requirement: Comment delay triage must expose collector observed, collector flushed, server received, DB inserted, and SSE published timestamps.
+- Steps:
+  1. Run `node --import tsx apps/server/scripts/regression-comment-latency-diagnostics.mjs`.
+  2. Persist a mock comment with collector timestamps.
+  3. Inspect published payload and comment-flow diagnostics.
+- Expected Results:
+  1. Payload includes `serverReceivedAt`, `dbInsertedAt`, and `busPublishedAt`.
+  2. Diagnostics include `latency.comment`.
+  3. Mock collector-to-server and server-to-bus segments are below 1 second.
+
+### TC-HL-009_Short numeric Douyin ID is conditional, not equivalent to sec_uid
+- Priority: P0
+- Requirement: Special-follow short IDs must match only when event/payload carries explicit `displayId`, `shortId`, or `uniqueId`; nickname fallback remains disabled.
+- Steps:
+  1. Run `node --import tsx apps/server/scripts/regression-highlight-short-id-diagnostics.mjs`.
+  2. Run `node --import tsx apps/server/scripts/regression-gift-message-bridge-short-identity.mjs`.
+  3. Copy diagnostics from the UI after a short-ID configured session.
+- Expected Results:
+  1. Short ID config is classified as `identityKind: short_id`.
+  2. Gifts with `payload.displayId/shortId/uniqueId` can hit the remark.
+  3. Gifts with only unrelated `MS4w/sec_uid` do not hit and record `short_id_not_resolved_to_event_identity`.
+
+### V26.6.25.1 execution record
+
+| Item | Result |
+| --- | --- |
+| Backup | `backups\p0-comment-gift-latency-20260625-114745` |
+| `node --import tsx apps/server/scripts/regression-comment-non-live-panel-noise.mjs` | PASS |
+| `node --import tsx apps/server/scripts/regression-comment-latency-diagnostics.mjs` | PASS |
+| `node --import tsx apps/server/scripts/regression-highlight-short-id-diagnostics.mjs` | PASS |
+| `node --import tsx apps/server/scripts/regression-gift-message-bridge-short-identity.mjs` | PASS |
+| `node apps/web/scripts/regression-unknown-user-and-highlight-diagnostics.mjs` | PASS |
+| `npm run test:regression` | PASS: server 41, web 18, desktop 6 |
+| `npm run audit:security` | PASS for high gate; remaining `esbuild` low and `uuid/exceljs` moderate |
+| `npm run desktop:pack:fast` | PASS; packaged native ABI gate passed |
+| Installer | `C:\Users\85855\PycharmProjects\PythonProject\douyin-live-suite-clean\apps\desktop\release\糖三角-V26.6.25.1-安装包.exe` |
+| Installer SHA256 | `726A0C29598A6468568CEB8FDA4175DE88A2873FADD04594484A84C5098BDD89` |

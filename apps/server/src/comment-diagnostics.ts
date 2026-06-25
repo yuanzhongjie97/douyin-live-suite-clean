@@ -52,8 +52,38 @@ export interface HighlightMatchDiagnostic {
   message?: string;
 }
 
+export interface HighlightConfigDiagnostic {
+  at: string;
+  userId: string;
+  remark?: string;
+  line: number;
+  identityKind?: string;
+  status?: string;
+  warning?: string;
+}
+
+export interface HighlightMissDiagnostic {
+  at: string;
+  sessionId?: string;
+  category: 'comment' | 'gift';
+  uniqueKey?: string;
+  userId?: string;
+  userLink?: string;
+  configuredUserId?: string;
+  configuredRemark?: string;
+  reason: string;
+  message?: string;
+}
+
+type LatencyStats = {
+  count: number;
+  maxCollectorToServerMs: number;
+  maxServerToBusMs: number;
+};
+
 const MAX_DECISIONS = 800;
 const MAX_HIGHLIGHT_MATCHES = 200;
+const MAX_HIGHLIGHT_MISSES = 200;
 const TEXT_LIMIT = 160;
 
 function trimText(value: unknown): string | undefined {
@@ -88,6 +118,15 @@ export class CommentDiagnostics {
   private ledger: Record<string, number> = {};
   private decisions: CommentDecision[] = [];
   private highlightMatches: HighlightMatchDiagnostic[] = [];
+  private highlightConfig: HighlightConfigDiagnostic[] = [];
+  private highlightMisses: HighlightMissDiagnostic[] = [];
+  private latency: { comment: LatencyStats } = {
+    comment: {
+      count: 0,
+      maxCollectorToServerMs: 0,
+      maxServerToBusMs: 0,
+    },
+  };
 
   increment(name: string, by = 1): void {
     this.counters[name] = (this.counters[name] ?? 0) + by;
@@ -133,11 +172,87 @@ export class CommentDiagnostics {
     }
   }
 
+  recordHighlightConfig(config: Omit<HighlightConfigDiagnostic, 'at'>): void {
+    const row: HighlightConfigDiagnostic = {
+      ...config,
+      at: new Date().toISOString(),
+      userId: trimText(config.userId) ?? '',
+      remark: trimText(config.remark),
+      identityKind: trimText(config.identityKind),
+      status: trimText(config.status),
+      warning: trimText(config.warning),
+    };
+    this.highlightConfig.push(row);
+  }
+
+  replaceHighlightConfig(configs: Array<Omit<HighlightConfigDiagnostic, 'at'>>): void {
+    this.highlightConfig = [];
+    for (const config of configs) {
+      this.recordHighlightConfig(config);
+    }
+  }
+
+  recordHighlightMiss(miss: Omit<HighlightMissDiagnostic, 'at'>): void {
+    const row: HighlightMissDiagnostic = {
+      ...miss,
+      at: new Date().toISOString(),
+      userId: trimText(miss.userId),
+      userLink: trimText(miss.userLink),
+      configuredUserId: trimText(miss.configuredUserId),
+      configuredRemark: trimText(miss.configuredRemark),
+      reason: trimText(miss.reason) ?? '',
+      message: trimText(miss.message),
+    };
+    this.highlightMisses.push(row);
+    if (this.highlightMisses.length > MAX_HIGHLIGHT_MISSES) {
+      this.highlightMisses.splice(0, this.highlightMisses.length - MAX_HIGHLIGHT_MISSES);
+    }
+  }
+
+  recordCommentLatency(input: {
+    collectorObservedAt?: string;
+    collectorFlushedAt?: string;
+    serverReceivedAt?: string;
+    busPublishedAt?: string;
+  }): { collectorToServerMs?: number; serverToBusMs?: number } {
+    const collectorAt = Date.parse(input.collectorFlushedAt || input.collectorObservedAt || '');
+    const serverAt = Date.parse(input.serverReceivedAt || '');
+    const busAt = Date.parse(input.busPublishedAt || '');
+    const collectorToServerMs =
+      Number.isFinite(collectorAt) && Number.isFinite(serverAt)
+        ? Math.max(0, serverAt - collectorAt)
+        : undefined;
+    const serverToBusMs =
+      Number.isFinite(serverAt) && Number.isFinite(busAt)
+        ? Math.max(0, busAt - serverAt)
+        : undefined;
+    this.latency.comment.count += 1;
+    if (typeof collectorToServerMs === 'number') {
+      this.latency.comment.maxCollectorToServerMs = Math.max(
+        this.latency.comment.maxCollectorToServerMs,
+        collectorToServerMs,
+      );
+    }
+    if (typeof serverToBusMs === 'number') {
+      this.latency.comment.maxServerToBusMs = Math.max(
+        this.latency.comment.maxServerToBusMs,
+        serverToBusMs,
+      );
+    }
+    return {
+      collectorToServerMs,
+      serverToBusMs,
+    };
+  }
+
   snapshot(): {
     counters: CounterMap;
     ledger: Record<string, number>;
     recent: CommentDecision[];
     highlightMatches: HighlightMatchDiagnostic[];
+    highlightConfig: HighlightConfigDiagnostic[];
+    highlightMisses: HighlightMissDiagnostic[];
+    latency: { comment: LatencyStats };
     generatedAt: string;
   } {
     return {
@@ -145,6 +260,11 @@ export class CommentDiagnostics {
       ledger: { ...this.ledger },
       recent: [...this.decisions],
       highlightMatches: [...this.highlightMatches],
+      highlightConfig: [...this.highlightConfig],
+      highlightMisses: [...this.highlightMisses],
+      latency: {
+        comment: { ...this.latency.comment },
+      },
       generatedAt: new Date().toISOString(),
     };
   }
@@ -154,6 +274,15 @@ export class CommentDiagnostics {
     this.ledger = {};
     this.decisions = [];
     this.highlightMatches = [];
+    this.highlightConfig = [];
+    this.highlightMisses = [];
+    this.latency = {
+      comment: {
+        count: 0,
+        maxCollectorToServerMs: 0,
+        maxServerToBusMs: 0,
+      },
+    };
   }
 }
 
