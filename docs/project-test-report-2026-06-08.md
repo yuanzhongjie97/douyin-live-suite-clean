@@ -2,9 +2,9 @@
 
 生成日期：2026-06-08  
 最近更新：2026-06-09  
-Current acceptance version: `V26.6.24.2`
+Current acceptance version: `V26.6.25.1`
 测试环境：Windows / PowerShell / Node.js `v22.16.0` / npm `10.9.2`  
-Current installer: see the V26.6.24.2 Release artifact section below.
+Current installer: see the V26.6.25.1 Release artifact section below.
 
 ## 1. 测试结论
 
@@ -1166,3 +1166,50 @@ Notes:
 - This is a capture-speed fix test package. It does not claim every real-room comment-loss DOM variant is closed.
 - No SQLite schema, statistics/export format, realtime window size, special-follow display format, or URL/API security boundary was changed.
 - Real-room acceptance remains user approval.
+
+## 34. 2026-06-25 V26.6.25.1 P0 Non-Live Noise, Latency, and Short-ID Remark Fix
+
+Purpose:
+- Fix the diagnostic report where private-message/customer-service/notification content was collected as comments.
+- Add evidence for comment latency by segment, with the target remaining under 1 second.
+- Clarify and enforce special-follow short numeric ID boundaries without enabling nickname fallback.
+
+Implemented scope:
+
+| Area | Result |
+| --- | --- |
+| Non-live panel filtering | Collector drops private/customer-service/notification/profile panel rows outside live chat roots |
+| Unknown username display | Frontend filters `MS4w.../sec_uid` from display names and shows `未知用户` when no real nickname exists |
+| Latency diagnostics | Payload and diagnostics include collector observed/flushed, server received, DB inserted, and SSE published timestamps |
+| Short ID remarks | Short numeric IDs match explicit `displayId/shortId/uniqueId`; config and miss diagnostics explain unresolved short IDs |
+| Gift bridge identity | Message-bridge gifts preserve `displayId/shortId/uniqueId` for server, UI, and diagnostics |
+
+Execution result:
+
+| Check | Result |
+| --- | --- |
+| `regression-comment-non-live-panel-noise.mjs` | PASS |
+| `regression-comment-latency-diagnostics.mjs` | PASS |
+| `regression-highlight-short-id-diagnostics.mjs` | PASS |
+| `regression-gift-message-bridge-short-identity.mjs` | PASS |
+| `regression-unknown-user-and-highlight-diagnostics.mjs` | PASS |
+| `npm run test:server` | PASS: server 41 scripts |
+| `npm run test:web` | PASS: web 18 scripts |
+| `npm run test:desktop` | PASS: desktop 6 scripts |
+| `npm run test:regression` | PASS: server 41, web 18, desktop 6 |
+| `npm run audit:security` | PASS for high gate; remaining `esbuild` low and `uuid/exceljs` moderate |
+| `npm run desktop:pack:fast` | PASS; packaged native ABI gate passed |
+
+Release artifact:
+
+| Item | Value |
+| --- | --- |
+| Version | `V26.6.25.1` / `26.6.25-1` |
+| Installer | `C:\Users\85855\PycharmProjects\PythonProject\douyin-live-suite-clean\apps\desktop\release\糖三角-V26.6.25.1-安装包.exe` |
+| Size | `85,334,864` bytes |
+| SHA256 | `726A0C29598A6468568CEB8FDA4175DE88A2873FADD04594484A84C5098BDD89` |
+
+Notes:
+- Main comments 200, gifts 120, retained raw detail 50,000, history query, export/statistics, and special-follow display format are unchanged.
+- Short numeric Douyin IDs do not automatically equal `MS4w/sec_uid`; if Douyin does not expose short ID fields, the remark remains unresolved by design.
+- Real-room installed acceptance remains user approval.

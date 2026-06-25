@@ -1,7 +1,19 @@
 # 测试覆盖矩阵
 
 生成日期：2026-06-09  
-Current version: `V26.6.24.2`
+Current version: `V26.6.25.1`
+
+## 20. 2026-06-25 P0 non-live noise, latency, and short-ID gates
+
+| P0 module | Automation | Coverage conclusion | Manual validation still needed |
+| --- | --- | --- | --- |
+| Non-live side-panel noise | `regression-comment-non-live-panel-noise.mjs` | PASS; private/customer-service/notification rows are dropped and real chat comments remain | Future real DOM variant screenshots |
+| Unknown username fallback | `regression-unknown-user-and-highlight-diagnostics.mjs` | PASS; raw profile IDs are not displayed as usernames | Installed UI observation |
+| Comment latency diagnostics | `regression-comment-latency-diagnostics.mjs` | PASS; collector/server/DB/SSE timestamps are available and mock latency stays below 1 second | Busy real-room copied diagnostics |
+| Short ID special-follow diagnostics | `regression-highlight-short-id-diagnostics.mjs`, `regression-gift-message-bridge-short-identity.mjs` | PASS; short IDs hit only explicit `displayId/shortId/uniqueId`, and unresolved `MS4w/sec_uid` cases are diagnosed | Real special-follow gift observation |
+| Full regression | `npm run test:regression` | PASS: server 41, web 18, desktop 6 | User installer test |
+| Security audit gate | `npm run audit:security` | PASS for high gate; remaining low/moderate only | None |
+| Packaging gate | `npm run desktop:pack:fast` | PASS: installer `糖三角-V26.6.25.1-安装包.exe`, SHA256 `726A0C29598A6468568CEB8FDA4175DE88A2873FADD04594484A84C5098BDD89` | Installed startup, capture, history query, export, and real business acceptance |
 
 ## 19. 2026-06-24 P0 gift backfill speed gates
 

@@ -527,6 +527,40 @@ function normalizeHighlightUserIdToken(value: string): string {
   return extractDouyinUserId(source) || source;
 }
 
+function classifyHighlightIdentity(rawValue: string, normalizedValue: string): Pick<HighlightUserConfig, 'identityKind' | 'status' | 'warning'> {
+  if (normalizedValue.includes('*')) {
+    return {
+      identityKind: 'wildcard',
+      status: 'partially_resolvable',
+      warning: '通配符只匹配事件身份字段，不匹配昵称或整条消息。',
+    };
+  }
+  if (/^\d{5,}$/u.test(normalizedValue)) {
+    return {
+      identityKind: 'short_id',
+      status: 'partially_resolvable',
+      warning: '短数字抖音号只有在事件携带同一短 ID/displayId/shortId/uniqueId 时命中；无法自动等价到 MS4w/sec_uid。',
+    };
+  }
+  if (/^https?:\/\/(?:www\.)?douyin\.com\/(?:user|follow)\//iu.test(rawValue)) {
+    return {
+      identityKind: 'profile_url',
+      status: 'resolvable',
+    };
+  }
+  if (isDirectDouyinUserId(normalizedValue)) {
+    return {
+      identityKind: 'direct_profile_id',
+      status: 'resolvable',
+    };
+  }
+  return {
+    identityKind: 'unknown',
+    status: 'partially_resolvable',
+    warning: '该配置不是可确认的主页链接或长 ID；仅在事件身份字段完全一致时命中。',
+  };
+}
+
 function normalizeHighlightIdentityToken(value: string | undefined): string {
   const normalized = normalizeWhitespace(value);
   if (!normalized) {
@@ -557,6 +591,7 @@ function parseHighlightUsersFile(content: string): HighlightUserConfig[] {
       const item: HighlightUserConfig = {
         userId: trimmedUserId,
         line: index + 1,
+        ...classifyHighlightIdentity(labeledLine?.[1] ?? rawUserId, trimmedUserId),
       };
       if (remark) {
         item.remark = remark;
@@ -602,17 +637,26 @@ function getHighlightEventMatch(event: LiveEvent, user: HighlightUserConfig): Hi
   let payloadUserId: string | undefined;
   let payloadUserLink: string | undefined;
   let payloadLinkUserId: string | undefined;
+  let payloadDisplayId: string | undefined;
+  let payloadShortId: string | undefined;
+  let payloadUniqueId: string | undefined;
   let identityBackfilled = false;
   try {
     const payload = event.payloadJson ? (JSON.parse(event.payloadJson) as RawCollectorEvent) : undefined;
     payloadUserId = normalizeWhitespace(payload?.userId);
     payloadUserLink = normalizeWhitespace(payload?.userLink);
     payloadLinkUserId = extractDouyinUserId(payload?.userLink);
+    payloadDisplayId = normalizeWhitespace(payload?.displayId);
+    payloadShortId = normalizeWhitespace(payload?.shortId);
+    payloadUniqueId = normalizeWhitespace(payload?.uniqueId);
     identityBackfilled = payload?.identityBackfillSource === 'identity_cache';
   } catch {
     payloadUserId = undefined;
     payloadUserLink = undefined;
     payloadLinkUserId = undefined;
+    payloadDisplayId = undefined;
+    payloadShortId = undefined;
+    payloadUniqueId = undefined;
     identityBackfilled = false;
   }
   const candidates: Array<{ matchedBy: string; value?: string }> = [
@@ -622,6 +666,9 @@ function getHighlightEventMatch(event: LiveEvent, user: HighlightUserConfig): Hi
     { matchedBy: 'payload.userId', value: payloadUserId },
     { matchedBy: 'payload.userLink', value: payloadUserLink },
     { matchedBy: 'payload.userLink.sec_uid', value: payloadLinkUserId },
+    { matchedBy: 'payload.displayId', value: payloadDisplayId },
+    { matchedBy: 'payload.shortId', value: payloadShortId },
+    { matchedBy: 'payload.uniqueId', value: payloadUniqueId },
   ];
   for (const candidate of candidates) {
     const normalized = normalizeHighlightIdentityToken(candidate.value);
@@ -1374,6 +1421,16 @@ export class CaptureService {
       exists = true;
       const fileContent = decodeHighlightUsersFile(await readFile(filePath));
       users = parseHighlightUsersFile(fileContent);
+      commentDiagnostics.replaceHighlightConfig(
+        users.map((user) => ({
+          userId: user.userId,
+          remark: user.remark,
+          line: user.line,
+          identityKind: user.identityKind,
+          status: user.status,
+          warning: user.warning,
+        })),
+      );
     } catch (readError) {
       const nodeError = readError as NodeJS.ErrnoException;
       exists = existsSync(filePath);
@@ -1393,6 +1450,9 @@ export class CaptureService {
     if (targetSessionId && users.length && matchedEvents.length) {
       this.recordHighlightMatchDiagnostics(targetSessionId, matchedEvents, users);
     }
+    if (targetSessionId && users.length) {
+      this.recordHighlightMissDiagnostics(targetSessionId, users, matchedEvents);
+    }
 
     return {
       filePath,
@@ -1402,6 +1462,49 @@ export class CaptureService {
       updatedAt,
       error,
     };
+  }
+
+  private recordHighlightMissDiagnostics(
+    sessionId: string,
+    users: HighlightUserConfig[],
+    matchedEvents: LiveEvent[],
+  ): void {
+    const shortIdUsers = users.filter((user) => user.identityKind === 'short_id');
+    if (!shortIdUsers.length) {
+      return;
+    }
+    const matchedKeys = new Set(matchedEvents.map((event) => event.uniqueKey));
+    const recentGifts = this.db.getEvents({ sessionId, category: 'gift', limit: 120 });
+    for (const row of recentGifts) {
+      if (matchedKeys.has(row.uniqueKey)) {
+        continue;
+      }
+      const payload = readEventPayload(row);
+      const eventIdentity = normalizeWhitespace(row.userId) || normalizeWhitespace(row.userLink) || normalizeWhitespace(payload?.userId) || normalizeWhitespace(payload?.userLink);
+      if (!eventIdentity) {
+        continue;
+      }
+      const eventShortIds = [payload?.displayId, payload?.shortId, payload?.uniqueId]
+        .map((item) => normalizeHighlightIdentityToken(item))
+        .filter(Boolean);
+      for (const user of shortIdUsers) {
+        const target = normalizeHighlightIdentityToken(user.userId);
+        if (!target || eventShortIds.includes(target)) {
+          continue;
+        }
+        commentDiagnostics.recordHighlightMiss({
+          sessionId,
+          category: 'gift',
+          uniqueKey: row.uniqueKey,
+          userId: row.userId || payload?.userId,
+          userLink: row.userLink || payload?.userLink,
+          configuredUserId: user.userId,
+          configuredRemark: user.remark,
+          reason: 'short_id_not_resolved_to_event_identity',
+          message: row.message || payload?.text || payload?.rawText,
+        });
+      }
+    }
   }
 
   async exportSessionWorkbook(sessionId?: string): Promise<{ fileName: string; buffer: Buffer }> {
@@ -1822,6 +1925,7 @@ export class CaptureService {
     const expandedRawEvents = rawEvents.flatMap((raw) => this.expandCollectorEvent(raw));
 
     for (const raw of expandedRawEvents) {
+      const serverReceivedAt = new Date().toISOString();
       const category = raw.category ?? classifyText(raw.text);
       if (category === 'comment') {
         incrementCaptureLedger('ledger.comment.raw_received');
@@ -1948,6 +2052,7 @@ export class CaptureService {
       );
       const payloadForStorage: RawCollectorEvent = {
         ...raw,
+        serverReceivedAt,
         ingestSeq: ++this.collectorIngestSequence,
         userName: resolvedUserName ?? raw.userName,
         userId: resolvedUserId ?? raw.userId,
@@ -2030,6 +2135,12 @@ export class CaptureService {
       }
     }
 
+    const dbInsertedAt = new Date().toISOString();
+    for (const row of rows) {
+      const payload = readEventPayload(row) ?? ({} as RawCollectorEvent);
+      payload.dbInsertedAt = dbInsertedAt;
+      row.payloadJson = JSON.stringify(payload);
+    }
     const insertResult = this.db.insertEvents(rows);
     commentDiagnostics.increment('db.attempted', insertResult.attempted);
     commentDiagnostics.increment('db.inserted', insertResult.inserted);
@@ -2074,11 +2185,21 @@ export class CaptureService {
     this.updateLiveStats(persistedRows);
     for (const row of persistedRows) {
       if (row.category === 'comment') {
+        const busPublishedAt = new Date().toISOString();
+        const payload = readEventPayload(row) ?? ({} as RawCollectorEvent);
+        payload.busPublishedAt = busPublishedAt;
+        row.payloadJson = JSON.stringify(payload);
+        const latency = commentDiagnostics.recordCommentLatency({
+          collectorObservedAt: payload.collectorObservedAt,
+          collectorFlushedAt: payload.collectorFlushedAt,
+          serverReceivedAt: payload.serverReceivedAt,
+          busPublishedAt,
+        });
         commentDiagnostics.increment('service.bus_published');
         incrementCaptureLedger('ledger.comment.bus_published');
         commentDiagnostics.record({
           stage: 'bus.publish',
-          reason: 'service.bus_published',
+          reason: 'latency.comment_published',
           diagId: buildCommentDiagId(sessionId, row),
           sessionId,
           category: row.category,
@@ -2087,6 +2208,7 @@ export class CaptureService {
           userName: row.userName,
           userId: row.userId,
           userLink: row.userLink,
+          extra: latency,
         });
       } else if (row.category === 'gift') {
         incrementCaptureLedger('ledger.gift.bus_published');

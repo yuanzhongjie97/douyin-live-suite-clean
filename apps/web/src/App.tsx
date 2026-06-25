@@ -133,6 +133,15 @@ const FONT_SIZE_OPTIONS: Array<{ id: MessageFontSize; label: string }> = [
 
 const VERSION_LOGS = [
   {
+    version: 'V26.6.25.1',
+    date: '2026-06-25',
+    items: [
+      '收紧评论采集范围：私信、客服、通知、用户资料等非直播面板内容不再进入评论区、数据库、统计和导出。',
+      '评论链路新增采集观察、flush、服务端接收、DB 插入和 SSE 发布分段诊断；无真实昵称时显示“未知用户”，不再把 MS4w/sec_uid 当用户名。',
+      '特别关注短数字抖音号仅在事件携带 displayId/shortId/uniqueId 时命中，并在复制诊断中输出配置类型、短 ID 未命中原因和礼物身份证据。',
+    ],
+  },
+  {
     version: 'V26.6.24.2',
     date: '2026-06-24',
     items: [
@@ -1642,6 +1651,9 @@ function readEventPayload(item: LiveEvent): {
   userName?: string;
   userId?: string;
   userLink?: string;
+  displayId?: string;
+  shortId?: string;
+  uniqueId?: string;
   giftName?: string;
   giftCount?: number;
   sourceId?: string;
@@ -1658,6 +1670,9 @@ function readEventPayload(item: LiveEvent): {
       userName?: string;
       userId?: string;
       userLink?: string;
+      displayId?: string;
+      shortId?: string;
+      uniqueId?: string;
       giftName?: string;
       giftCount?: number;
       sourceId?: string;
@@ -1797,16 +1812,25 @@ function isDefaultMysteryAlias(value: string | undefined): boolean {
   return normalized.includes('神秘人') || normalized.includes('神秘王者');
 }
 
+function isDirectProfileId(value: string | undefined): boolean {
+  return /^(?:MS4w|sec_)[A-Za-z0-9._%-]{8,}$/u.test(String(value ?? '').trim());
+}
+
 function getPreferredUserDisplayName(item: LiveEvent, highlightUser?: HighlightUserConfig): string {
   const payload = readEventPayload(item);
   const parsedGiftUserName = parseGiftEventDetails(item).userName?.trim() ?? '';
   const names = [item.userName, payload.userName, parsedGiftUserName]
     .map((value) => String(value ?? '').trim())
-    .filter(Boolean);
+    .filter((value) => Boolean(value) && !isDirectProfileId(value));
 
   const realName = names.find((name) => !isDefaultMysteryAlias(name));
-  const originalName = realName || names[0] || String(item.userId ?? payload.userId ?? '').trim() || '匿名用户';
-  return originalName;
+  if (realName) {
+    return realName;
+  }
+  if (names[0]) {
+    return names[0];
+  }
+  return '未知用户';
 }
 
 function isMysteryActorEvent(item: LiveEvent, category: EventCategory): boolean {
@@ -1909,6 +1933,9 @@ function getHighlightMatchDetails(
     { matchedBy: 'payload.userId', value: payload.userId },
     { matchedBy: 'payload.userLink', value: payload.userLink },
     { matchedBy: 'payload.userLink.sec_uid', value: payloadLinkUserId },
+    { matchedBy: 'payload.displayId', value: payload.displayId },
+    { matchedBy: 'payload.shortId', value: payload.shortId },
+    { matchedBy: 'payload.uniqueId', value: payload.uniqueId },
   ] as Array<{ matchedBy: string; value?: string }>;
   for (const user of users) {
     for (const candidate of candidates) {
@@ -4069,6 +4096,10 @@ export default function App() {
         visible: visibleHighlightMatches,
         persisted: persistedHighlightMatches,
         gift: persistedHighlightMatches.filter((item) => item?.category === 'gift'),
+      },
+      highlightDiagnostics: {
+        highlightConfig: 'highlightConfig' in serverCommentFlow ? serverCommentFlow.highlightConfig : [],
+        highlightMisses: 'highlightMisses' in serverCommentFlow ? serverCommentFlow.highlightMisses : [],
       },
       server: {
         commentFlow: serverCommentFlow,

@@ -411,3 +411,14 @@
 - Packaging: version `V26.6.24.2` / `26.6.24-2`; `npm run desktop:pack:fast` PASS and packaged native ABI gate passed.
 - Artifact: `C:\Users\85855\PycharmProjects\PythonProject\douyin-live-suite-clean\apps\desktop\release\糖三角-V26.6.24.2-安装包.exe`, size `85,332,556` bytes, SHA256 `7AA634DDC6728CB1BA747D418FD540FE45F13B05C352C8035FDD953300FF151E`.
 - Boundary: this is a capture-speed fix test package. It does not claim every real-room comment-loss DOM variant is closed. Main comments 200, gifts 120, raw detail retention 50,000, history query, export/statistics, and special-follow display rules are unchanged.
+
+### 72 V26.6.25.1 non-live comment noise, latency diagnostics, and short-ID remarks
+- Content: collector now rejects private-message, customer-service, notification, profile, and other non-live panel rows outside the live chat root; diagnostics record `digest.non_live_panel_noise`.
+- Content: frontend no longer displays `MS4w.../sec_uid` as a username when a comment lacks a real nickname; it shows `未知用户` while preserving identity evidence for diagnostics/profile links.
+- Content: comment payloads now carry collector observed/flushed, server received, DB inserted, and SSE published timestamps so copied diagnostics can localize delay against the 1 second target.
+- Content: special-follow short numeric IDs are classified as `short_id` and only match explicit event fields `displayId/shortId/uniqueId`; unresolved `MS4w/sec_uid` cases are recorded as short-ID misses instead of falling back to nickname.
+- Content: gift message bridge preserves `displayId/shortId/uniqueId` from real gift payloads, so short numeric ID remarks can hit when Douyin exposes the short ID.
+- Verification: `npm run test:regression` PASS with server 41, web 18, desktop 6; `npm run audit:security` PASS for high gate; targeted P0 scripts for non-live noise, latency, short ID diagnostics, gift bridge identity, and unknown username all PASS.
+- Packaging: version `V26.6.25.1` / `26.6.25-1`; `npm run desktop:pack:fast` PASS and packaged native ABI gate passed.
+- Artifact: `C:\Users\85855\PycharmProjects\PythonProject\douyin-live-suite-clean\apps\desktop\release\糖三角-V26.6.25.1-安装包.exe`, size `85,334,864` bytes, SHA256 `726A0C29598A6468568CEB8FDA4175DE88A2873FADD04594484A84C5098BDD89`.
+- Boundary: main comments 200, gifts 120, raw detail retention 50,000, history query, export/statistics, special-follow display format, and no pure nickname fallback remain unchanged; real-room installed acceptance remains user approval.

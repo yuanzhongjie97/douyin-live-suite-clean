@@ -28,6 +28,9 @@ export interface HighlightUserConfig {
   userId: string;
   remark?: string;
   line: number;
+  identityKind?: 'short_id' | 'direct_profile_id' | 'profile_url' | 'wildcard' | 'unknown';
+  status?: 'resolvable' | 'partially_resolvable' | 'unresolved';
+  warning?: string;
 }
 
 export interface HighlightUsersSnapshot {

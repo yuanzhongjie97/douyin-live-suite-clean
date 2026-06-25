@@ -18,7 +18,7 @@ export function normalizeCollectorPayloadItem(item: unknown): RawCollectorEvent 
     return undefined;
   }
   const collectorClientId = normalizeWhitespace(String(source.collectorClientId ?? '')) || undefined;
-  return {
+  const output: RawCollectorEvent = {
     category,
     text,
     rawText,
@@ -30,6 +30,34 @@ export function normalizeCollectorPayloadItem(item: unknown): RawCollectorEvent 
     giftName: normalizeWhitespace(String(source.giftName ?? '')) || undefined,
     giftCount: typeof source.giftCount === 'number' && Number.isFinite(source.giftCount) ? source.giftCount : undefined,
   };
+  const optionalTextFields: Array<keyof Pick<
+    RawCollectorEvent,
+    | 'displayId'
+    | 'shortId'
+    | 'uniqueId'
+    | 'collectorTraceId'
+    | 'collectorObservedAt'
+    | 'collectorFlushedAt'
+    | 'collectorSource'
+  >> = [
+    'displayId',
+    'shortId',
+    'uniqueId',
+    'collectorTraceId',
+    'collectorObservedAt',
+    'collectorFlushedAt',
+    'collectorSource',
+  ];
+  for (const field of optionalTextFields) {
+    const value = normalizeWhitespace(String(source[field] ?? ''));
+    if (value) {
+      output[field] = value;
+    }
+  }
+  if (typeof source.domRevision === 'number' && Number.isFinite(source.domRevision)) {
+    output.domRevision = source.domRevision;
+  }
+  return output;
 }
 
 export function normalizeCollectorPayloadBatch(payload: unknown): RawCollectorEvent[] {

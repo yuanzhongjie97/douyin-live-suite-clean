@@ -1000,3 +1000,33 @@ Remaining risk: a gift with no direct identity and no prior clean identity cache
 - This closes the identified server-side scan pressure. It does not by itself prove every real Douyin DOM comment-loss variant is closed.
 - Pending gift state is in-memory and scoped to the running capture session; app restart intentionally does not perform broad historical repair scans during normal live capture.
 - The highest long-term risk remains collector DOM complexity and real-room variants.
+
+## 2026-06-25 P0 Non-Live Noise, Latency, and Short-ID Remark Risk Closure
+
+### Newly mitigated P0 risks
+
+| Risk | Trigger | Impact if unfixed | Mitigation |
+| --- | --- | --- | --- |
+| Private/customer-service/notification rows enter comments | Douyin side panels or hidden non-live panels exist in the page DOM | Comment area, DB, statistics, and Excel contain non-live messages such as customer-service prompts or private-message history | Collector now rejects nodes inside non-live panels unless they are inside a live chat root; diagnostics record `digest.non_live_panel_noise` |
+| Profile ID is displayed as username | A row has `MS4w.../sec_uid` but no real nickname | UI shows a confusing long ID instead of a neutral missing-name state | Web display-name fallback now filters direct profile IDs and returns `未知用户` |
+| Comment latency cannot be localized | User sees delayed comments but diagnostics only show frontend SSE/display time | Slow collector scan, flush, server persist, DB insert, or SSE publish cannot be separated | Payload and diagnostics now include collector observed/flushed, server received, DB inserted, and bus published timestamps |
+| Short numeric special-follow config is assumed equivalent to `sec_uid` | User config uses a Douyin short ID while event only has `MS4w/sec_uid` | Gift remark appears lost or, worse, could be incorrectly matched by nickname if forced | Highlight config diagnostics classify `short_id`; short IDs match only explicit `displayId/shortId/uniqueId` fields, and misses record `short_id_not_resolved_to_event_identity` |
+
+### Verification
+
+| Check | Result |
+| --- | --- |
+| `regression-comment-non-live-panel-noise.mjs` | PASS; private/customer-service/notification rows are dropped while live comments remain |
+| `regression-comment-latency-diagnostics.mjs` | PASS; latency segments are recorded and mock P95 target stays under 1 second |
+| `regression-highlight-short-id-diagnostics.mjs` | PASS; short ID config, hit, and miss diagnostics are exposed |
+| `regression-gift-message-bridge-short-identity.mjs` | PASS; gift message bridge preserves `displayId/shortId/uniqueId` |
+| `regression-unknown-user-and-highlight-diagnostics.mjs` | PASS; frontend does not display raw profile IDs as usernames and copy diagnostics include highlight config/misses |
+| `npm run test:regression` | PASS: server 41, web 18, desktop 6 |
+| `npm run audit:security` | PASS for high gate; remaining low/moderate only |
+| `npm run desktop:pack:fast` | PASS: `糖三角-V26.6.25.1-安装包.exe` |
+
+### Remaining risk
+
+- This closes the specific diagnostic report where non-live side-panel content was collected as comments. Future Douyin DOM variants still require screenshot, session ID, time point, copied diagnostics, and history/export comparison.
+- Short numeric Douyin ID remains a conditional match: if Douyin does not expose `displayId/shortId/uniqueId` in the event and no binding exists, the remark will not display by design.
+- Collector complexity and `@ts-nocheck` remain P1 structural risks.

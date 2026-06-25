@@ -577,6 +577,26 @@ export class DouyinCollector {
                 '[class*="message-virtual-list"]',
                 '[class*="chatroom"]',
             ];
+            const nonLivePanelSelector = [
+                '[class*="im-"]',
+                '[class*="IM"]',
+                '[class*="private"]',
+                '[class*="Private"]',
+                '[class*="notification"]',
+                '[class*="Notification"]',
+                '[class*="notice"]',
+                '[class*="Notice"]',
+                '[class*="customer"]',
+                '[class*="Customer"]',
+                '[class*="service"]',
+                '[class*="Service"]',
+                '[class*="profile"]',
+                '[class*="Profile"]',
+                '[aria-label*="私信"]',
+                '[aria-label*="通知"]',
+                '[aria-label*="客服"]',
+                '[aria-label*="用户资料"]',
+            ].join(',');
             const chatItemSelectors = [
                 '.webcast-chatroom___item',
                 '[class*="chatroom___item"]',
@@ -1184,6 +1204,18 @@ export class DouyinCollector {
                 }
             };
             const isInsideChatRoot = (element) => Boolean(element.closest(chatRootSelectors.join(',')));
+            const isInsideNonLivePanel = (element) => {
+                if (!(element instanceof HTMLElement)) {
+                    return false;
+                }
+                try {
+                    const panel = element.closest(nonLivePanelSelector);
+                    return Boolean(panel && !panel.closest(chatRootSelectors.join(',')));
+                }
+                catch {
+                    return false;
+                }
+            };
             const hasExplicitGiftText = (text) => /(?:\u9001\u51FA\u4E86?|\u8D60\u9001\u4E86?|\u9001\u7ED9(?:\u4E3B\u64AD)?|\u6253\u8D4F|\u6295\u5582|\u9001\u793C)(?:\s|[xX\u00D7*]|\d|$)/u.test(text) ||
                 /^.{1,24}?(?:[\uFF1A:]\s*|\s+)\u9001\s+\S+/u.test(text) ||
                 /(?:\u70B9\u4EAE.*\u7C89\u4E1D\u56E2|\u7C89\u4E1D\u56E2\u706F\u724C|\u5165\u56E2\u5238|\u4EBA\u6C14\u7968)/u.test(text);
@@ -2131,7 +2163,10 @@ export class DouyinCollector {
                 const directUserName = normalizeUserName(user.nickname || user.desensitized_nickname || user.display_id || user.remark_name || payload.user_name || payload.userName || '');
                 const parsedUserName = parsedDescriptions.find((item) => item.userName)?.userName || '';
                 const profileUserId = normalize(extractUserIdFromValue(user.sec_uid || user.secUid || user.webcast_uid || user.webcastUid || user.open_id || user.openId || user.profile_schema || user.profileSchema || user.schema_url || user.schemaUrl || payload.sec_user_id || payload.secUserId || payload.sec_uid || payload.secUid || payload.open_id || payload.openId || payload.from_user_id || payload.fromUserId || payload.common?.sec_user_id || payload.common?.secUserId || payload.common?.sec_uid || payload.common?.secUid || payload.common?.user_id || payload.public_area_common?.default_click_schema_url || payload.publicAreaCommon?.default_click_schema_url || payload.publicAreaCommon?.schema_url || payload.publicAreaCommon?.schemaUrl || '')) || undefined;
-                const displayUserId = normalize(user.display_id || user.displayId || user.unique_id || user.uniqueId || user.user_unique_id || user.userUniqueId || user.id_str || user.id || user.uid || user.user_id || user.userId || user.open_id || user.openId || payload.user_id || payload.userId || payload.from_user_id || payload.fromUserId || payload.open_id || payload.openId || payload.common?.user_id || '');
+                const displayId = normalize(user.display_id || user.displayId || payload.display_id || payload.displayId || '');
+                const shortId = normalize(user.short_id || user.shortId || payload.short_id || payload.shortId || '');
+                const uniqueId = normalize(user.unique_id || user.uniqueId || user.user_unique_id || user.userUniqueId || payload.unique_id || payload.uniqueId || payload.user_unique_id || payload.userUniqueId || '');
+                const displayUserId = normalize(displayId || uniqueId || shortId || user.id_str || user.id || user.uid || user.user_id || user.userId || user.open_id || user.openId || payload.user_id || payload.userId || payload.from_user_id || payload.fromUserId || payload.open_id || payload.openId || payload.common?.user_id || '');
                 const userId = normalize(extractUserIdFromValue(displayUserId || profileUserId || '')) || undefined;
                 const userLink = profileUserId && isDirectProfileId(profileUserId) ? `https://www.douyin.com/user/${encodeURIComponent(profileUserId)}` : undefined;
                 const giftNameCandidates = [
@@ -2162,6 +2197,9 @@ export class DouyinCollector {
                     userName,
                     userId,
                     userLink,
+                    displayId,
+                    shortId,
+                    uniqueId,
                     giftName,
                     giftCount,
                     collectorObservedAt: new Date().toISOString(),
@@ -2271,6 +2309,12 @@ export class DouyinCollector {
                 flushing = true;
                 const batch = pending.splice(0, pending.length);
                 pendingCoarseKeys.clear();
+                const collectorFlushedAt = new Date().toISOString();
+                for (const item of batch) {
+                    if (item && typeof item === 'object') {
+                        item.collectorFlushedAt = collectorFlushedAt;
+                    }
+                }
                 try {
                     await windowAny.__douyinCollectorBatch(batch);
                     diag('collector.flush', 'flush.batch_sent', {
@@ -2523,6 +2567,15 @@ export class DouyinCollector {
                         category: 'comment',
                         rawText,
                         text: '',
+                        source,
+                    });
+                    return;
+                }
+                if (isInsideNonLivePanel(scopedElement)) {
+                    diag('collector.digest', 'digest.non_live_panel_noise', {
+                        category: 'comment',
+                        rawText,
+                        text: rawText,
                         source,
                     });
                     return;

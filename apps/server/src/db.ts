@@ -43,6 +43,9 @@ type EventPayloadIdentity = {
   userName?: string;
   userId?: string;
   userLink?: string;
+  displayId?: string;
+  shortId?: string;
+  uniqueId?: string;
   text?: string;
   rawText?: string;
 };
@@ -103,6 +106,12 @@ function normalizeHighlightIdentityToken(value: string | undefined): string {
   return normalizeHighlightComparable(extractDouyinUserId(normalized) || normalized);
 }
 
+function getPayloadShortIdentityCandidates(payload: EventPayloadIdentity | undefined): string[] {
+  return [payload?.displayId, payload?.shortId, payload?.uniqueId]
+    .map((item) => normalizeHighlightIdentityToken(item))
+    .filter(Boolean);
+}
+
 function escapeHighlightPattern(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&');
 }
@@ -145,9 +154,14 @@ function eventMatchesHighlightUser(event: LiveEvent, user: HighlightUserConfig):
   let payloadUserId: string | undefined;
   let payloadLinkUserId: string | undefined;
   try {
-    const payload = event.payloadJson ? (JSON.parse(event.payloadJson) as { userId?: string; userLink?: string }) : undefined;
+    const payload = event.payloadJson ? (JSON.parse(event.payloadJson) as EventPayloadIdentity) : undefined;
     payloadUserId = payload?.userId;
     payloadLinkUserId = extractDouyinUserId(payload?.userLink);
+    const candidates = [event.userId, event.userLink, extractDouyinUserId(event.userLink), payloadUserId, payloadLinkUserId]
+      .map((item) => normalizeHighlightIdentityToken(item))
+      .filter(Boolean);
+    candidates.push(...getPayloadShortIdentityCandidates(payload));
+    return candidates.some((candidate) => highlightPatternMatches(candidate, targetId));
   } catch {
     payloadUserId = undefined;
     payloadLinkUserId = undefined;
@@ -1060,7 +1074,16 @@ export class AppDatabase {
       identityClauses.push(
         `json_valid(payload_json) AND (${payloadLinkLikeClauses})`,
       );
-      args.push(...exactIds, ...exactIds, ...exactIds, ...exactIds, ...exactIds);
+      identityClauses.push(
+        `json_valid(payload_json) AND LOWER(COALESCE(json_extract(payload_json, '$.displayId'), '')) IN (${placeholders})`,
+      );
+      identityClauses.push(
+        `json_valid(payload_json) AND LOWER(COALESCE(json_extract(payload_json, '$.shortId'), '')) IN (${placeholders})`,
+      );
+      identityClauses.push(
+        `json_valid(payload_json) AND LOWER(COALESCE(json_extract(payload_json, '$.uniqueId'), '')) IN (${placeholders})`,
+      );
+      args.push(...exactIds, ...exactIds, ...exactIds, ...exactIds, ...exactIds, ...exactIds, ...exactIds, ...exactIds);
     }
 
     if (wildcardUsers.length) {
